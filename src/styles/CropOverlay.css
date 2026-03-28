@@ -1,0 +1,145 @@
+/* CropOverlay.css */
+
+.crop-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: #0e0e0e;
+  display: flex;
+  flex-direction: column;
+}
+
+.crop-top-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: calc(env(safe-area-inset-top, 0px) + 12px) 16px 12px;
+  flex-shrink: 0;
+}
+
+.crop-cancel-btn,
+.crop-confirm-btn,
+.crop-reset-btn {
+  background: none;
+  border: none;
+  font-size: 15px;
+  font-weight: 500;
+  padding: 8px 16px;
+  min-height: 44px;
+  min-width: 44px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  font-family: var(--font-stack, sans-serif);
+}
+
+.crop-cancel-btn {
+  color: #999;
+}
+
+.crop-confirm-btn {
+  color: #c9a96e;
+}
+
+.crop-reset-btn {
+  color: #f0ede8;
+  font-size: 13px;
+}
+
+.crop-image-area {
+  flex: 1;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* Wrapper constrains canvas to fit within the area */
+.crop-canvas-wrapper {
+  position: relative;
+  max-width: 100%;
+  max-height: 100%;
+  line-height: 0;
+}
+
+.crop-canvas {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+/* Dark overlay outside crop — clip-path set inline */
+.crop-mask {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  pointer-events: none;
+}
+
+/* Crop frame — draggable */
+.crop-frame {
+  position: absolute;
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  cursor: grab;
+  touch-action: none;
+  box-sizing: border-box;
+}
+
+.crop-frame:active {
+  cursor: grabbing;
+}
+
+/* Rule of thirds grid lines */
+.crop-grid-line {
+  position: absolute;
+  background: rgba(255, 255, 255, 0.2);
+  pointer-events: none;
+}
+
+.crop-grid-line--h {
+  left: 0;
+  right: 0;
+  height: 1px;
+  transform: translateY(-50%);
+}
+
+.crop-grid-line--v {
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  transform: translateX(-50%);
+}
+
+/* Aspect ratio buttons */
+.crop-ratios {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 16px;
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 12px);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.crop-ratio-btn {
+  padding: 6px 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
+  color: #999;
+  font-size: 13px;
+  font-weight: 500;
+  min-height: 32px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  font-family: var(--font-stack, sans-serif);
+}
+
+.crop-ratio-btn--active {
+  border-color: #c9a96e;
+  color: #f0ede8;
+  background: rgba(201, 169, 110, 0.1);
+}

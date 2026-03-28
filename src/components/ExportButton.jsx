@@ -27,7 +27,7 @@ function Spinner() {
   );
 }
 
-export default function ExportButton({ fullImageData, processExport, preset, onError }) {
+export default function ExportButton({ fullImageData, processExport, preset, onError, onSuccess }) {
   const [status, setStatus] = useState('idle'); // 'idle' | 'processing' | 'saved'
 
   const isDisabled = !fullImageData || status === 'processing';
@@ -54,6 +54,7 @@ export default function ExportButton({ fullImageData, processExport, preset, onE
         : await new Promise((res) => canvas.toBlob(res, 'image/jpeg', 0.92));
       const filename = makeFilename(preset.id);
       await exportImage(blob, filename);
+      onSuccess?.();
       setStatus('saved');
       setTimeout(() => setStatus('idle'), 1500);
     } catch {

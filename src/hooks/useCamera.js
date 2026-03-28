@@ -6,6 +6,7 @@ import { ErrorTypes } from '../utils/errors.js';
 
 /**
  * Manages camera capture and library import.
+ * @param {{ onBatchSelect?: (files: File[]) => void }} [options]
  * @returns {{
  *   captureRef: React.RefObject,
  *   importRef: React.RefObject,
@@ -17,7 +18,7 @@ import { ErrorTypes } from '../utils/errors.js';
  *   error: object|null
  * }}
  */
-export function useCamera() {
+export function useCamera({ onBatchSelect } = {}) {
   const captureRef = useRef(null);
   const importRef = useRef(null);
 
@@ -29,8 +30,18 @@ export function useCamera() {
   const triggerImport = () => importRef.current?.click();
 
   async function handleFileChange(event) {
-    const file = event.target.files?.[0];
-    if (!file) return;
+    const files = Array.from(event.target.files ?? []);
+    if (files.length === 0) return;
+
+    // Multiple files → batch mode
+    if (files.length > 1 && onBatchSelect) {
+      onBatchSelect(files);
+      // Reset the input so the same selection can be re-triggered
+      event.target.value = '';
+      return;
+    }
+
+    const file = files[0];
 
     // Reset immediately — don't show stale image
     setPreviewImageData(null);

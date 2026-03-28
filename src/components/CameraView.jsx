@@ -70,6 +70,7 @@ export default function CameraView({
         ref={importRef}
         type="file"
         accept="image/*"
+        multiple
         onChange={handleFileChange}
         style={{ display: 'none' }}
       />

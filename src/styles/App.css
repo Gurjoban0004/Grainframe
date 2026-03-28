@@ -56,7 +56,7 @@ body,
 /* ── Preset strip wrapper ── */
 .preset-strip-wrapper {
   position: relative;
-  height: 48px;
+  height: 88px;
   flex-shrink: 0;
 }
 
@@ -158,6 +158,65 @@ body,
 
 .gallery-btn:active {
   background: rgba(255, 255, 255, 0.12);
+}
+
+/* ── Crop button ── */
+.crop-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 8px;
+  border: 1.5px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.06);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #999;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+.crop-btn:active {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+/* ── Top overlay ── */
+.top-overlay {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.top-overlay-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ── Undo button ── */
+.undo-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #f0ede8;
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  min-height: 36px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+.undo-btn:active {
+  background: rgba(255, 255, 255, 0.2);
 }
 
 /* ── Landscape layout ── */
