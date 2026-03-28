@@ -1,20 +1,9 @@
-import { useRef, useEffect } from 'react';
 import '../styles/PresetSelector.css';
 
 const EMPTY_THUMBNAILS = new Map();
 const EMPTY_MAP = new Map();
 
 function PresetCard({ preset, thumbnail, isActive, onSelect, isReady }) {
-  const canvasRef = useRef(null);
-
-  useEffect(() => {
-    if (!thumbnail || !canvasRef.current) return;
-    const canvas = canvasRef.current;
-    canvas.width = thumbnail.width;
-    canvas.height = thumbnail.height;
-    canvas.getContext('2d').putImageData(thumbnail, 0, 0);
-  }, [thumbnail]);
-
   return (
     <button
       className={`preset-card${isActive ? ' preset-card--active' : ''}`}
@@ -22,7 +11,10 @@ function PresetCard({ preset, thumbnail, isActive, onSelect, isReady }) {
       aria-label={`Apply ${preset.name} preset`}
       aria-pressed={isActive}
     >
-      <canvas ref={canvasRef} className="preset-thumbnail" />
+      {thumbnail
+        ? <img src={thumbnail} className="preset-thumbnail" alt="" />
+        : <div className="preset-thumbnail preset-thumbnail--empty" />
+      }
       <span className="preset-name">{preset.name}</span>
       {isReady && !isActive && <div className="preset-ready-dot" />}
     </button>

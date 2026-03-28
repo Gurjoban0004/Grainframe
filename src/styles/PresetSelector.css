@@ -46,6 +46,10 @@
   display: block;
 }
 
+.preset-thumbnail--empty {
+  background: #1a1a1a;
+}
+
 .preset-card--active .preset-thumbnail {
   border-color: #c9a96e;
 }

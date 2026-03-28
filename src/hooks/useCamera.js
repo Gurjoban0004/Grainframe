@@ -1,47 +1,17 @@
 import { useRef, useState, useEffect } from 'react';
-import { loadImageDual, resizeToMax } from '../utils/image.js';
-import { detectAutoRotation, readOrientation, applyOrientation } from '../utils/exif.js';
-import { getMaxDimension } from '../utils/memory.js';
+import { loadAndResize } from '../utils/image.js';
 import { ErrorTypes } from '../utils/errors.js';
 
-// Cache whether createImageBitmap supports imageOrientation option
-let _bitmapOptionsCache;
-
-async function getBitmapOptions() {
-  if (_bitmapOptionsCache !== undefined) return _bitmapOptionsCache;
-  try {
-    // Test with a 1-byte PNG-like blob — will fail to decode but option support is what matters
-    const testBlob = new Blob([new Uint8Array([137,80,78,71,13,10,26,10])], { type: 'image/png' });
-    await createImageBitmap(testBlob, { imageOrientation: 'none' });
-    _bitmapOptionsCache = { imageOrientation: 'none' };
-  } catch {
-    _bitmapOptionsCache = {};
-  }
-  return _bitmapOptionsCache;
-}
-
-function bitmapToImageData(bitmap) {
-  const canvas = document.createElement('canvas');
-  canvas.width = bitmap.width;
-  canvas.height = bitmap.height;
-  canvas.getContext('2d').drawImage(bitmap, 0, 0);
-  return canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height);
+function isOOMError(err) {
+  return err instanceof RangeError ||
+    err.message?.toLowerCase().includes('memory') ||
+    err.message?.toLowerCase().includes('allocation');
 }
 
 /**
  * Manages camera capture and library import.
- * @param {{ onBatchSelect?: (files: File[]) => void, onShutterDismiss?: () => void }} [options]
- * @returns {{
- *   captureRef: React.RefObject,
- *   importRef: React.RefObject,
- *   handleFileChange: (event: Event) => void,
- *   triggerCapture: () => void,
- *   triggerImport: () => void,
- *   previewImageData: ImageData|null,
- *   fullImageData: ImageData|null,
- *   error: object|null,
- *   isCapturing: boolean
- * }}
+ * Stores the source Blob (not full-res ImageData) to save ~27MB of memory.
+ * Full-res is decoded on-demand during export.
  */
 export function useCamera({ onBatchSelect, onShutterDismiss } = {}) {
   const captureRef = useRef(null);
@@ -50,7 +20,7 @@ export function useCamera({ onBatchSelect, onShutterDismiss } = {}) {
   const shutterTimeoutRef = useRef(null);
 
   const [previewImageData, setPreviewImageData] = useState(null);
-  const [fullImageData, setFullImageData] = useState(null);
+  const [sourceBlob, setSourceBlob] = useState(null);
   const [error, setError] = useState(null);
 
   function triggerCapture() {
@@ -60,14 +30,13 @@ export function useCamera({ onBatchSelect, onShutterDismiss } = {}) {
 
   const triggerImport = () => importRef.current?.click();
 
-  // visibilitychange: detect return from native camera
+  // Detect return from native camera
   useEffect(() => {
     function handleVisibilityChange() {
       if (!document.hidden && isCapturingRef.current) {
         if (import.meta.env.DEV) {
           console.log('App re-entered from camera, waiting for file...');
         }
-        // Safety: dismiss shutter after 5s if no file arrives
         shutterTimeoutRef.current = setTimeout(() => {
           isCapturingRef.current = false;
           onShutterDismiss?.();
@@ -96,51 +65,18 @@ export function useCamera({ onBatchSelect, onShutterDismiss } = {}) {
     }
 
     const file = files[0];
-
     setPreviewImageData(null);
-    setFullImageData(null);
+    setSourceBlob(null);
     setError(null);
 
     try {
-      const bitmapOptions = await getBitmapOptions();
-
-      // PARALLEL: read EXIF orientation + decode/resize images simultaneously
-      const [
-        orientation,
-        { previewBitmap, fullBitmap, needsManualResize },
-      ] = await Promise.all([
-        readOrientation(file),
-        loadImageDual(file, 1024, getMaxDimension(), bitmapOptions),
-      ]);
-
-      const autoRotates = await detectAutoRotation(); // cached after first call
-
-      let previewImageData, fullImageData;
-
-      if (!autoRotates && orientation !== 1) {
-        previewImageData = applyOrientation(previewBitmap, orientation);
-        fullImageData = applyOrientation(fullBitmap, orientation);
-      } else {
-        previewImageData = bitmapToImageData(previewBitmap);
-        fullImageData = bitmapToImageData(fullBitmap);
-      }
-
-      previewBitmap.close?.();
-      if (fullBitmap !== previewBitmap) fullBitmap.close?.();
-
-      if (needsManualResize) {
-        previewImageData = resizeToMax(previewImageData, 1024);
-        fullImageData = resizeToMax(fullImageData, getMaxDimension());
-      }
-
+      // Load preview only — browser handles EXIF rotation automatically
+      const previewImageData = await loadAndResize(file, 1024);
       setPreviewImageData(previewImageData);
-      setFullImageData(fullImageData);
+      setSourceBlob(file); // store blob, not full-res ImageData (~27MB saved)
     } catch (err) {
       onShutterDismiss?.();
-      if (
-        err instanceof RangeError ||
-        (err?.message && /memory|allocation/i.test(err.message))
-      ) {
+      if (isOOMError(err)) {
         setError(ErrorTypes.IMAGE_TOO_LARGE);
       } else {
         setError(ErrorTypes.IMAGE_LOAD_FAILED);
@@ -155,7 +91,8 @@ export function useCamera({ onBatchSelect, onShutterDismiss } = {}) {
     triggerCapture,
     triggerImport,
     previewImageData,
-    fullImageData,
+    sourceBlob,       // replaces fullImageData
+    fullImageData: null, // kept for API compat — always null now
     error,
   };
 }

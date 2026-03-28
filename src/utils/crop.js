@@ -10,12 +10,14 @@ export function applyCrop(imageData, rect) {
   const sw = Math.round(rect.width * imageData.width);
   const sh = Math.round(rect.height * imageData.height);
 
-  const canvas = typeof OffscreenCanvas !== 'undefined'
-    ? new OffscreenCanvas(imageData.width, imageData.height)
-    : Object.assign(document.createElement('canvas'), { width: imageData.width, height: imageData.height });
-  const ctx = canvas.getContext('2d');
-  ctx.putImageData(imageData, 0, 0);
-  return ctx.getImageData(sx, sy, sw, sh);
+  const canvas = document.createElement('canvas');
+  canvas.width = imageData.width;
+  canvas.height = imageData.height;
+  canvas.getContext('2d').putImageData(imageData, 0, 0);
+  const result = canvas.getContext('2d').getImageData(sx, sy, sw, sh);
+  canvas.width = 0;
+  canvas.height = 0;
+  return result;
 }
 
 /**

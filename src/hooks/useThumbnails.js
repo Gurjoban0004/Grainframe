@@ -30,8 +30,17 @@ export function useThumbnails(previewImageData, presets) {
         );
         try {
           const result = processImage(clone, preset, { mode: 'preview' });
-          map.set(preset.id, result);
-          // Update incrementally so cards fill in as they complete
+
+          // Convert to data URL string immediately — releases ImageData from memory
+          const canvas = document.createElement('canvas');
+          canvas.width = result.width;
+          canvas.height = result.height;
+          canvas.getContext('2d').putImageData(result, 0, 0);
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
+          canvas.width = 0;
+          canvas.height = 0;
+
+          map.set(preset.id, dataUrl);
           if (!cancelled) setThumbnails(new Map(map));
         } catch {
           // Skip failed thumbnails silently

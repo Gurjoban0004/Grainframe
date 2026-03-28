@@ -79,7 +79,7 @@ export default function App() {
     handleFileChange,
     triggerImport,
     previewImageData: rawPreview,
-    fullImageData: rawFull,
+    sourceBlob: rawSourceBlob,
     error: cameraError,
   } = useCamera({ onBatchSelect: handleBatchSelect, onShutterDismiss: handleShutterDismiss });
 
@@ -91,6 +91,7 @@ export default function App() {
     error: pipelineError,
     processPreview,
     processExport,
+    worker: workerBridge,
   } = useImagePipeline();
 
   // ── Preset history ──
@@ -106,12 +107,13 @@ export default function App() {
 
   // ── Crop state ──
   const [croppedPreview, setCroppedPreview] = useState(null);
-  const [croppedFull, setCroppedFull] = useState(null);
   const [cropState, setCropState] = useState(null);
   const [isCropMode, setIsCropMode] = useState(false);
 
+  // sourceBlob: original file (for full-res export); cropState: applied crop rect
+  const sourceBlob = rawSourceBlob;
   const previewImageData = croppedPreview ?? rawPreview;
-  const fullImageData = croppedFull ?? rawFull;
+  // fullImageData is no longer held in state — loaded on-demand during export
 
   const { thumbnails } = useThumbnails(previewImageData, PRESETS);
 
@@ -125,7 +127,9 @@ export default function App() {
     startBackgroundProcessing,
     addToCache,
     invalidate: invalidateCache,
-  } = usePresetCache(PRESETS, activePresetId, previewImageData);
+    pause: pauseBackgroundProcessing,
+    resume: resumeBackgroundProcessing,
+  } = usePresetCache(PRESETS, activePresetId, previewImageData, workerBridge);
 
   // Track whether background processing has been triggered for the current image
   const bgTriggeredRef = useRef(null);
@@ -137,7 +141,6 @@ export default function App() {
       setBatchMode(false);
       clearBatch();
       setCroppedPreview(null);
-      setCroppedFull(null);
       setCropState(null);
       invalidateCache();
       bgTriggeredRef.current = null;
@@ -179,10 +182,13 @@ export default function App() {
       pushPreset(id);
       const cached = getProcessedPreview(id);
       if (cached) {
-        // Instant cache hit — set preview directly, skip worker
         setPreview(cached);
       } else {
-        processPreview(previewImageData, preset);
+        // Pause background so worker is free for this user tap
+        pauseBackgroundProcessing();
+        processPreview(previewImageData, preset).then(() => {
+          resumeBackgroundProcessing();
+        });
       }
     }
   }
@@ -194,8 +200,11 @@ export default function App() {
     if (cached) {
       setPreview(cached);
     } else {
+      pauseBackgroundProcessing();
       const preset = PRESETS.find(p => p.id === prevId);
-      processPreview(previewImageData, preset);
+      processPreview(previewImageData, preset).then(() => {
+        resumeBackgroundProcessing();
+      });
     }
   }
 
@@ -206,11 +215,9 @@ export default function App() {
 
   // ── Crop handlers ──
   function handleCropConfirm(cropRect) {
-    if (!rawPreview || !rawFull) return;
+    if (!rawPreview) return;
     const newPreview = applyCrop(rawPreview, cropRect);
-    const newFull = applyCrop(rawFull, cropRect);
     setCroppedPreview(newPreview);
-    setCroppedFull(newFull);
     setCropState(cropRect);
     setIsCropMode(false);
     invalidateCache();
@@ -220,7 +227,6 @@ export default function App() {
 
   function handleCropReset() {
     setCroppedPreview(null);
-    setCroppedFull(null);
     setCropState(null);
     setIsCropMode(false);
     invalidateCache();
@@ -329,7 +335,8 @@ export default function App() {
                 />
               </div>
               <ExportButton
-                fullImageData={fullImageData}
+                sourceBlob={sourceBlob}
+                cropState={cropState}
                 processExport={processExport}
                 preset={activePreset}
                 onError={setExportError}

@@ -1,5 +1,8 @@
 import { useState } from 'react';
 import { ErrorTypes } from '../utils/errors.js';
+import { loadAndResize } from '../utils/image.js';
+import { applyCrop } from '../utils/crop.js';
+import { getMaxDimension } from '../utils/memory.js';
 import { makeFilename, exportImage } from '../utils/export.js';
 import '../styles/ExportButton.css';
 
@@ -27,19 +30,33 @@ function Spinner() {
   );
 }
 
-export default function ExportButton({ fullImageData, processExport, preset, onError, onSuccess }) {
-  const [status, setStatus] = useState('idle'); // 'idle' | 'processing' | 'saved'
+export default function ExportButton({
+  sourceBlob,
+  cropState,
+  processExport,
+  preset,
+  onError,
+  onSuccess,
+}) {
+  const [status, setStatus] = useState('idle');
 
-  const isDisabled = !fullImageData || status === 'processing';
+  const isDisabled = !sourceBlob || status === 'processing';
 
   async function handleExport() {
-    if (!fullImageData || status === 'processing') return;
+    if (!sourceBlob || status === 'processing') return;
 
     setStatus('processing');
     try {
+      // Load full resolution on-demand — browser handles EXIF rotation
+      let fullImageData = await loadAndResize(sourceBlob, getMaxDimension());
+
+      // Apply crop at full resolution if a crop was set
+      if (cropState) {
+        fullImageData = applyCrop(fullImageData, cropState);
+      }
+
       const processedData = await processExport(fullImageData, preset);
 
-      // Always use a regular canvas for maximum compatibility
       const canvas = document.createElement('canvas');
       canvas.width = processedData.width;
       canvas.height = processedData.height;
@@ -53,13 +70,16 @@ export default function ExportButton({ fullImageData, processExport, preset, onE
         )
       );
 
+      // Release canvas
+      canvas.width = 0;
+      canvas.height = 0;
+
       const filename = makeFilename(preset.id);
       await exportImage(blob, filename);
       onSuccess?.();
       setStatus('saved');
       setTimeout(() => setStatus('idle'), 1500);
     } catch (err) {
-      // AbortError = user cancelled share sheet — not an error
       if (err?.name !== 'AbortError') {
         onError(ErrorTypes.EXPORT_FAILED);
       }
