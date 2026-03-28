@@ -2,17 +2,14 @@ import { ErrorTypes } from './errors.js';
 
 /**
  * Load a Blob into an ImageBitmap.
- * Attempts createImageBitmap with { imageOrientation: 'none' } first.
- * Falls back to createImageBitmap without options if that throws.
+ * Uses default createImageBitmap so the browser applies its own
+ * EXIF orientation handling (if any). detectAutoRotation() tells
+ * us whether it did, so we can skip manual correction.
  * @param {Blob} blob
  * @returns {Promise<ImageBitmap>}
  */
 export async function loadImage(blob) {
-  try {
-    return await createImageBitmap(blob, { imageOrientation: 'none' });
-  } catch {
-    return createImageBitmap(blob);
-  }
+  return createImageBitmap(blob);
 }
 
 /**

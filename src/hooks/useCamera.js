@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { loadImage, resizeToMax } from '../utils/image.js';
-import { applyOrientation, readOrientation } from '../utils/exif.js';
+import { detectAutoRotation, readOrientation, applyOrientation } from '../utils/exif.js';
 import { getMaxDimension } from '../utils/memory.js';
 import { ErrorTypes } from '../utils/errors.js';
 
@@ -40,10 +40,16 @@ export function useCamera() {
     try {
       const bitmap = await loadImage(file);
 
-      // loadImage uses { imageOrientation: 'none' } so the browser never
-      // auto-rotates — we always apply EXIF orientation manually.
-      const orientation = await readOrientation(file);
-      const imageData = applyOrientation(bitmap, orientation);
+      const [autoRotates, orientation] = await Promise.all([
+        detectAutoRotation(),
+        readOrientation(file),
+      ]);
+
+      // If the browser auto-rotates (Safari), skip manual correction.
+      // If it doesn't (Chrome with imageOrientation:none), apply it ourselves.
+      const imageData = autoRotates
+        ? applyOrientation(bitmap, 1)
+        : applyOrientation(bitmap, orientation);
 
       bitmap.close?.();
 
