@@ -1,94 +1,77 @@
-.camera-view {
-  position: relative;
+/* CameraView.css */
+
+/* Preview canvases — fill the preview-area, object-fit handles aspect ratio */
+.preview-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
   width: 100%;
   height: 100%;
-  overflow: hidden;
+  object-fit: contain;
 }
 
-/* Progress bar */
-.progress-bar {
+.preview-canvas--back {
+  z-index: 1;
+}
+
+.preview-canvas--front {
+  z-index: 2;
+  transition: opacity 150ms ease;
+}
+
+.preview-canvas--front.fading {
+  opacity: 0;
+}
+
+/* Processing bar — inside preview-area, above canvases, below top overlay */
+.processing-bar {
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
   height: 2px;
-  background: var(--color-accent, #c9a96e);
-  opacity: 0;
-  transition: opacity 150ms;
-  z-index: 10;
+  z-index: 15;
+  background: rgba(14, 14, 14, 0.5);
   overflow: hidden;
 }
 
-.progress-bar.active {
-  opacity: 1;
-  animation: progress-slide 1.2s ease-in-out infinite;
-}
-
-@keyframes progress-slide {
-  0%   { transform: translateX(-100%); }
-  100% { transform: translateX(100%); }
-}
-
-/* Dual canvas stack */
-.canvas-back,
-.canvas-front {
+.processing-bar::after {
+  content: '';
   position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  /* Scale down to fit the container while preserving aspect ratio */
-  max-width: 100%;
-  max-height: 100%;
-  width: auto;
-  height: auto;
+  top: 0;
+  left: -40%;
+  width: 40%;
+  height: 100%;
+  background: #c9a96e;
+  animation: processing-slide 1.2s ease-in-out infinite;
 }
 
-.canvas-back {
-  z-index: 1;
+@keyframes processing-slide {
+  0%   { left: -40%; }
+  100% { left: 100%; }
 }
 
-.canvas-front {
-  z-index: 2;
-  transition: opacity 150ms ease;
-}
-
-.canvas-front.fading {
-  opacity: 0;
-}
-
-/* Capture button — 72px circle */
-.capture-btn {
-  width: 72px;
-  height: 72px;
-  border-radius: 50%;
-  border: 3px solid #fff;
-  background: #1a1a1a;
-  cursor: pointer;
-  flex-shrink: 0;
-  /* Ensure minimum tap target */
-  min-width: 44px;
-  min-height: 44px;
-}
-
-.capture-btn:active {
-  background: #333;
-}
-
-/* Import button — 44×44px tap target */
-.import-btn {
-  width: 44px;
-  height: 44px;
+/* Top overlay — floats over the image */
+.top-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 20;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  border: none;
-  color: #fff;
-  cursor: pointer;
-  border-radius: 8px;
-  flex-shrink: 0;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: calc(env(safe-area-inset-top, 0px) + 12px) 16px 0;
+  background: linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0.5) 0%,
+    rgba(0, 0, 0, 0.3) 60%,
+    transparent 100%
+  );
+  height: 80px;
+  pointer-events: none;
 }
 
-.import-btn:active {
-  opacity: 0.7;
+.top-overlay > * {
+  pointer-events: auto;
 }

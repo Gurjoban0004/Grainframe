@@ -1,49 +1,17 @@
 import { useState } from 'react';
 import { ErrorTypes } from '../utils/errors.js';
 import { makeFilename, exportImage } from '../utils/export.js';
-
-const styles = {
-  button: {
-    position: 'fixed',
-    top: 'calc(var(--safe-top) + 12px)',
-    right: 'calc(var(--safe-right) + 12px)',
-    minWidth: '44px',
-    minHeight: '44px',
-    padding: '8px 16px',
-    background: 'rgba(14, 14, 14, 0.75)',
-    color: 'var(--color-text)',
-    border: '1px solid rgba(240, 237, 232, 0.25)',
-    borderRadius: '22px',
-    fontFamily: 'var(--font-stack)',
-    fontSize: '14px',
-    fontWeight: '500',
-    letterSpacing: '0.02em',
-    cursor: 'pointer',
-    backdropFilter: 'blur(8px)',
-    WebkitBackdropFilter: 'blur(8px)',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '6px',
-    zIndex: 50,
-    transition: 'opacity 150ms',
-  },
-  disabled: {
-    opacity: 0.5,
-    cursor: 'not-allowed',
-  },
-};
+import '../styles/ExportButton.css';
 
 function Spinner() {
   return (
     <svg
+      className="export-spinner"
       width="14"
       height="14"
       viewBox="0 0 14 14"
       fill="none"
       aria-hidden="true"
-      style={{
-        animation: 'export-spin 0.8s linear infinite',
-      }}
     >
       <circle
         cx="7"
@@ -55,12 +23,6 @@ function Spinner() {
         strokeDasharray="22"
         strokeDashoffset="8"
       />
-      <style>{`
-        @keyframes export-spin {
-          from { transform: rotate(0deg); }
-          to   { transform: rotate(360deg); }
-        }
-      `}</style>
     </svg>
   );
 }
@@ -74,7 +36,6 @@ export default function ExportButton({ fullImageData, processExport, preset, onE
     if (!fullImageData || status === 'processing') return;
 
     let processedData = null;
-
     setStatus('processing');
     try {
       processedData = await processExport(fullImageData, preset);
@@ -94,28 +55,22 @@ export default function ExportButton({ fullImageData, processExport, preset, onE
     }
   }
 
-  const buttonStyle = {
-    ...styles.button,
-    ...(isDisabled ? styles.disabled : {}),
-  };
+  let className = 'export-btn';
+  if (status === 'processing') className += ' export-btn--processing';
+  if (status === 'saved') className += ' export-btn--success';
 
   let label;
   if (status === 'processing') {
-    label = (
-      <>
-        <Spinner />
-        Processing…
-      </>
-    );
+    label = <><Spinner />Saving…</>;
   } else if (status === 'saved') {
-    label = 'Saved';
+    label = '✓ Saved';
   } else {
     label = 'Export';
   }
 
   return (
     <button
-      style={buttonStyle}
+      className={className}
       onClick={handleExport}
       disabled={isDisabled}
       aria-label="Export image"

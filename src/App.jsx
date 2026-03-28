@@ -13,8 +13,6 @@ import ErrorBanner from './components/ErrorBanner.jsx';
 import UpdateToast from './components/UpdateToast.jsx';
 import './styles/App.css';
 
-// Requirements: 4.3, 4.4, 7.1, 7.2, 7.3, 7.4, 7.5, 7.6, 8.1, 8.3, 13.1, 13.7, 15.1, 15.2
-
 const PRESETS = [classicChrome, softFilm, velvia];
 
 export default function App() {
@@ -39,7 +37,7 @@ export default function App() {
   const [activePreset, setActivePreset] = useState(classicChrome);
   const [showOriginal, setShowOriginal] = useState(false);
 
-  // On new photo load: reset to classicChrome and process (Req 15.1, 7.3)
+  // On new photo load: reset to classicChrome and process
   useEffect(() => {
     if (previewImageData) {
       setActivePreset(classicChrome);
@@ -54,103 +52,106 @@ export default function App() {
     processPreview(previewImageData, preset);
   }
 
-  // Merge errors — camera errors take priority (Req 13.1)
   const activeError = cameraError || pipelineError;
-
-  function onRetry() {
-    triggerImport();
-  }
-
   const [dismissed, setDismissed] = useState(false);
-
-  useEffect(() => {
-    if (activeError) setDismissed(false);
-  }, [activeError]);
-
+  useEffect(() => { if (activeError) setDismissed(false); }, [activeError]);
   const visibleError = dismissed ? null : activeError;
-
-  function onDismiss() {
-    setDismissed(true);
-  }
 
   const [exportError, setExportError] = useState(null);
   const [exportDismissed, setExportDismissed] = useState(false);
-
-  function onError(err) {
-    setExportError(err);
-  }
-
-  useEffect(() => {
-    if (exportError) setExportDismissed(false);
-  }, [exportError]);
+  useEffect(() => { if (exportError) setExportDismissed(false); }, [exportError]);
 
   const finalError = exportDismissed ? null : (exportError || visibleError);
 
   function handleRetry() {
-    if (exportError) {
-      setExportError(null);
-    } else {
-      onRetry();
-    }
+    if (exportError) setExportError(null);
+    else triggerImport();
   }
 
   function handleDismiss() {
-    if (exportError) {
-      setExportDismissed(true);
-    } else {
-      onDismiss();
-    }
+    if (exportError) setExportDismissed(true);
+    else setDismissed(true);
   }
+
+  const hasImage = !!previewImageData;
 
   return (
     <div className="app">
-      <CameraView
-        captureRef={captureRef}
-        importRef={importRef}
-        handleFileChange={handleFileChange}
-        preview={preview}
-        previewImageData={previewImageData}
-        isProcessing={isProcessing}
-        showOriginal={showOriginal}
-      >
-        <CompareButton
-          onPressStart={() => setShowOriginal(true)}
-          onPressEnd={() => setShowOriginal(false)}
-          visible={!!preview}
-        />
-      </CameraView>
-      <PresetSelector
-        presets={PRESETS}
-        activePresetId={activePreset.id}
-        onSelect={handleSelectPreset}
-        isProcessing={isProcessing}
-        visible={!!preview}
-      />
-      <div className="action-bar">
-        <button
-          className="import-btn"
-          aria-label="Import from library"
-          onClick={() => importRef.current?.click()}
+      {/* ── Preview area — fills all available space ── */}
+      <div className="preview-area">
+        <CameraView
+          captureRef={captureRef}
+          importRef={importRef}
+          handleFileChange={handleFileChange}
+          preview={preview}
+          previewImageData={previewImageData}
+          isProcessing={isProcessing}
+          showOriginal={showOriginal}
         >
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <rect x="3" y="3" width="7" height="7" rx="1" fill="currentColor" opacity="0.8" />
-            <rect x="14" y="3" width="7" height="7" rx="1" fill="currentColor" opacity="0.8" />
-            <rect x="3" y="14" width="7" height="7" rx="1" fill="currentColor" opacity="0.8" />
-            <rect x="14" y="14" width="7" height="7" rx="1" fill="currentColor" opacity="0.8" />
-          </svg>
-        </button>
-        <button
-          className="capture-btn"
-          aria-label="Take photo"
-          onClick={() => captureRef.current?.click()}
-        />
+          {/* Top overlay: ORIGINAL + Export float over the image */}
+          {hasImage && (
+            <div className="top-overlay">
+              <CompareButton
+                onPressStart={() => setShowOriginal(true)}
+                onPressEnd={() => setShowOriginal(false)}
+                visible={!!preview}
+              />
+              <ExportButton
+                fullImageData={fullImageData}
+                processExport={processExport}
+                preset={activePreset}
+                onError={setExportError}
+              />
+            </div>
+          )}
+        </CameraView>
       </div>
-      <ExportButton
-        fullImageData={fullImageData}
-        processExport={processExport}
-        preset={activePreset}
-        onError={onError}
-      />
+
+      {/* ── Controls column: display:contents in portrait, flex column in landscape ── */}
+      <div className="controls-column">
+        {/* Preset strip — only when image loaded */}
+        {hasImage && (
+          <div className="preset-strip-wrapper">
+            <PresetSelector
+              presets={PRESETS}
+              activePresetId={activePreset.id}
+              onSelect={handleSelectPreset}
+              isProcessing={isProcessing}
+            />
+          </div>
+        )}
+
+        {/* Action bar — always shown */}
+        <div className="action-bar">
+          <div className="action-bar-side action-bar-left">
+            <button
+              className="gallery-btn"
+              aria-label="Import from library"
+              onClick={() => importRef.current?.click()}
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <rect x="3" y="3" width="7" height="7" rx="1" fill="currentColor" opacity="0.8" />
+                <rect x="14" y="3" width="7" height="7" rx="1" fill="currentColor" opacity="0.8" />
+                <rect x="3" y="14" width="7" height="7" rx="1" fill="currentColor" opacity="0.8" />
+                <rect x="14" y="14" width="7" height="7" rx="1" fill="currentColor" opacity="0.8" />
+              </svg>
+            </button>
+          </div>
+
+          <div className="action-bar-center">
+            <button
+              className="capture-btn"
+              aria-label="Take photo"
+              onClick={() => captureRef.current?.click()}
+            >
+              <span className="capture-btn-inner" />
+            </button>
+          </div>
+
+          <div className="action-bar-side action-bar-right" />
+        </div>
+      </div>
+
       <ErrorBanner
         error={finalError}
         onRetry={handleRetry}

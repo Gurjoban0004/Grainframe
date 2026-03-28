@@ -44,7 +44,7 @@ export default function CameraView({
   }, [preview]);
 
   return (
-    <div className="camera-view">
+    <>
       {/* Hidden file inputs */}
       <input
         ref={captureRef}
@@ -62,18 +62,18 @@ export default function CameraView({
         style={{ display: 'none' }}
       />
 
-      {/* Progress bar */}
-      <div className={`progress-bar${isProcessing ? ' active' : ''}`} />
-
       {/* Dual canvas stack */}
-      <canvas ref={canvasBackRef} className="canvas-back" />
-      <canvas ref={canvasFrontRef} className="canvas-front" />
+      <canvas ref={canvasBackRef} className="preview-canvas preview-canvas--back" />
+      <canvas ref={canvasFrontRef} className="preview-canvas preview-canvas--front" />
 
-      {/* Empty state overlay */}
+      {/* Empty state */}
       {!previewImageData && <EmptyState />}
 
-      {/* Slot for overlaid children (e.g. CompareButton) */}
+      {/* Processing bar */}
+      {isProcessing && <div className="processing-bar" />}
+
+      {/* Top overlay slot (CompareButton + ExportButton) */}
       {children}
-    </div>
+    </>
   );
 }

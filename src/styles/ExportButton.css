@@ -1,0 +1,53 @@
+/* ExportButton.css */
+
+.export-btn {
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 20px;
+  color: #c9a96e;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 8px 16px;
+  min-width: 44px;
+  min-height: 36px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-stack, sans-serif);
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  transition: opacity 150ms;
+}
+
+.export-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.export-btn--processing {
+  color: #888;
+  animation: export-pulse 1s ease-in-out infinite;
+}
+
+@keyframes export-pulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+
+.export-btn--success {
+  color: #c9a96e;
+}
+
+@keyframes export-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+.export-spinner {
+  animation: export-spin 0.8s linear infinite;
+}

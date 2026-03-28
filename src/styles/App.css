@@ -1,5 +1,4 @@
-/* App.css — global CSS variables, reset, and root layout */
-/* Requirements: 13.2, 13.3 */
+/* App.css */
 
 :root {
   --color-bg: #0e0e0e;
@@ -26,79 +25,204 @@ body,
   font-family: var(--font-stack);
 }
 
+/* ── Root app shell ── */
 .app {
   display: flex;
   flex-direction: column;
   height: 100dvh;
-  padding-top: var(--safe-top);
-  padding-left: var(--safe-left);
-  padding-right: var(--safe-right);
-  box-sizing: border-box;
-}
-
-.camera-view {
-  flex: 1;
+  height: 100vh; /* fallback */
+  background: #0e0e0e;
   position: relative;
   overflow: hidden;
+  padding: 0;
 }
 
-.preset-selector {
-  height: 60px;
-  flex-shrink: 0;
-}
-
-.action-bar {
-  height: calc(80px + env(safe-area-inset-bottom));
-  flex-shrink: 0;
+/* ── Preview area — takes ALL remaining space ── */
+.preview-area {
+  flex: 1;
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 32px;
-  padding-bottom: var(--safe-bottom);
-  box-sizing: border-box;
+  overflow: hidden;
+  min-height: 0; /* CRITICAL — allows flex shrink */
 }
 
-/* Landscape layout — Requirements: 1.1, 1.2, 1.3, 1.4, 1.5 */
+/* ── controls-column: display:contents in portrait so children flow normally ── */
+.controls-column {
+  display: contents;
+}
+
+/* ── Preset strip wrapper ── */
+.preset-strip-wrapper {
+  position: relative;
+  height: 48px;
+  flex-shrink: 0;
+}
+
+.preset-strip-wrapper::before,
+.preset-strip-wrapper::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 24px;
+  z-index: 2;
+  pointer-events: none;
+}
+.preset-strip-wrapper::before {
+  left: 0;
+  background: linear-gradient(to right, rgba(14,14,14,0.95), transparent);
+}
+.preset-strip-wrapper::after {
+  right: 0;
+  background: linear-gradient(to left, rgba(14,14,14,0.95), transparent);
+}
+
+/* ── Action bar ── */
+.action-bar {
+  height: 72px;
+  flex-shrink: 0;
+  padding: 0 32px;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  background: rgba(14, 14, 14, 0.95);
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  z-index: 10;
+  box-sizing: content-box;
+}
+
+.action-bar-side {
+  flex: 1;
+  display: flex;
+  align-items: center;
+}
+.action-bar-left {
+  justify-content: flex-end;
+  padding-right: 24px;
+}
+.action-bar-right {
+  justify-content: flex-start;
+  padding-left: 24px;
+}
+.action-bar-center {
+  flex-shrink: 0;
+}
+
+/* ── Capture button ── */
+.capture-btn {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  border: 3px solid rgba(255, 255, 255, 0.9);
+  background: transparent;
+  padding: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+.capture-btn-inner {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  transition: background 100ms ease;
+  display: block;
+}
+
+.capture-btn:active .capture-btn-inner {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+/* ── Gallery button ── */
+.gallery-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 8px;
+  border: 1.5px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.06);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #999;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+.gallery-btn:active {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+/* ── Landscape layout ── */
 @media (orientation: landscape) {
   .app {
-    display: grid;
-    grid-template-columns: 1fr 80px;
-    grid-template-rows: 1fr auto;
+    flex-direction: row;
   }
 
-  .camera-view {
-    grid-column: 1;
-    grid-row: 1 / span 2;
+  .preview-area {
+    flex: 1;
+    height: 100dvh;
+    height: 100vh;
   }
 
-  .preset-selector {
-    grid-column: 2;
-    grid-row: 1;
-    height: auto;
-    overflow-y: auto;
-  }
-
-  .preset-selector__scroll {
+  .controls-column {
+    display: flex;
     flex-direction: column;
-    overflow-x: unset;
-    overflow-y: auto;
-    padding: 8px 4px;
+    width: 100px;
+    height: 100dvh;
+    height: 100vh;
+    background: rgba(14, 14, 14, 0.95);
+    border-left: 1px solid rgba(255, 255, 255, 0.06);
+    flex-shrink: 0;
   }
 
-  .preset-selector__pill {
-    min-height: 36px;
-    padding: 0 6px;
-    font-size: 11px;
-    white-space: normal;
-    word-break: break-word;
+  .preset-strip-wrapper {
+    flex: 1;
+    height: auto;
+    overflow: hidden;
+  }
+
+  .preset-strip-wrapper::before,
+  .preset-strip-wrapper::after {
+    width: 100%;
+    height: 20px;
+    left: 0;
+    right: 0;
+  }
+  .preset-strip-wrapper::before {
+    top: 0;
+    bottom: auto;
+    background: linear-gradient(to bottom, rgba(14,14,14,0.95), transparent);
+  }
+  .preset-strip-wrapper::after {
+    bottom: 0;
+    top: auto;
+    background: linear-gradient(to top, rgba(14,14,14,0.95), transparent);
   }
 
   .action-bar {
-    grid-column: 2;
-    grid-row: 2;
-    flex-direction: column;
+    width: 100%;
     height: auto;
-    padding-bottom: var(--safe-bottom);
-    gap: 16px;
+    flex-direction: column;
+    padding: 12px 8px;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    gap: 12px;
+    border-top: none;
+    border-left: none;
+    box-sizing: border-box;
   }
+
+  .action-bar-side { display: none; }
+  .action-bar-center { order: 0; }
+
+  .capture-btn { width: 52px; height: 52px; }
+  .gallery-btn { width: 36px; height: 36px; }
 }
