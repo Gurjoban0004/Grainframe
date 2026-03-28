@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pipeline Test</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0e0e0e;
+      color: #e0e0e0;
+      font-family: system-ui, sans-serif;
+      padding: 32px;
+      min-height: 100vh;
+    }
+
+    h1 {
+      font-size: 1rem;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: #888;
+      margin-bottom: 24px;
+    }
+
+    .controls {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 32px;
+      flex-wrap: wrap;
+    }
+
+    label { font-size: 0.85rem; color: #888; }
+
+    input[type="file"], select {
+      background: #1a1a1a;
+      border: 1px solid #333;
+      color: #e0e0e0;
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 0.9rem;
+      cursor: pointer;
+    }
+
+    select { min-width: 180px; }
+
+    .canvases {
+      display: flex;
+      gap: 24px;
+      flex-wrap: wrap;
+      margin-bottom: 24px;
+    }
+
+    .canvas-wrap {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .canvas-label {
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: #fff;
+    }
+
+    canvas {
+      max-width: 512px;
+      width: 512px;
+      height: auto;
+      display: block;
+      background: #1a1a1a;
+      border-radius: 4px;
+    }
+
+    #timing {
+      font-size: 0.85rem;
+      color: #888;
+      margin-bottom: 32px;
+      min-height: 1.2em;
+    }
+
+    #timing span { color: #7dd3fc; font-weight: 600; }
+
+    .checklist {
+      border: 1px solid #2a2a2a;
+      border-radius: 8px;
+      padding: 20px 24px;
+      max-width: 560px;
+    }
+
+    .checklist h2 {
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: #666;
+      margin-bottom: 16px;
+    }
+
+    .checklist ul {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .checklist li {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      font-size: 0.875rem;
+      line-height: 1.5;
+      color: #bbb;
+    }
+
+    .checklist li::before {
+      content: "☐";
+      color: #555;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+
+    #error {
+      color: #f87171;
+      font-size: 0.85rem;
+      margin-bottom: 16px;
+      min-height: 1.2em;
+    }
+  </style>
+</head>
+<body>
+  <h1>Grainframe — Pipeline Visual Test</h1>
+
+  <div class="controls">
+    <label for="fileInput">Photo</label>
+    <input type="file" id="fileInput" accept="image/*" />
+
+    <label for="presetSelect">Preset</label>
+    <select id="presetSelect">
+      <option value="classic-chrome">Classic Chrome</option>
+      <option value="soft-film">Soft Film</option>
+      <option value="velvia">Velvia</option>
+    </select>
+  </div>
+
+  <div id="error"></div>
+
+  <div class="canvases">
+    <div class="canvas-wrap">
+      <div class="canvas-label">Original</div>
+      <canvas id="originalCanvas"></canvas>
+    </div>
+    <div class="canvas-wrap">
+      <div class="canvas-label">Processed</div>
+      <canvas id="processedCanvas"></canvas>
+    </div>
+  </div>
+
+  <div id="timing"></div>
+
+  <div class="checklist">
+    <h2>Visual checklist</h2>
+    <ul>
+      <li>Are the blacks lifted? (shadows should look slightly faded/matte, not pure black)</li>
+      <li>Are highlights compressed? (bright areas should be slightly pulled down, not blown out)</li>
+      <li>Are colors slightly muted and cool-shifted?</li>
+      <li>Is there subtle grain visible when you look closely?</li>
+      <li>Does it look like a film photo, not just a darkened or noisy version of the original?</li>
+    </ul>
+  </div>
+
+  <script type="module">
+    import { processImage } from '/src/pipeline/index.js';
+
+    const presets = {};
+
+    async function loadPreset(id) {
+      if (!presets[id]) {
+        const res = await fetch(`/src/presets/${id}.json`);
+        presets[id] = await res.json();
+      }
+      return presets[id];
+    }
+
+    const fileInput     = document.getElementById('fileInput');
+    const presetSelect  = document.getElementById('presetSelect');
+    const origCanvas    = document.getElementById('originalCanvas');
+    const procCanvas    = document.getElementById('processedCanvas');
+    const timingEl      = document.getElementById('timing');
+    const errorEl       = document.getElementById('error');
+
+    const MAX_DIM = 1024;
+
+    let currentFile = null;
+
+    async function run() {
+      if (!currentFile) return;
+      errorEl.textContent = '';
+
+      const img = new Image();
+      const url = URL.createObjectURL(currentFile);
+
+      img.onload = async () => {
+        URL.revokeObjectURL(url);
+
+        // Scale down to MAX_DIM on the longest side
+        let w = img.naturalWidth;
+        let h = img.naturalHeight;
+        if (w > MAX_DIM || h > MAX_DIM) {
+          const scale = MAX_DIM / Math.max(w, h);
+          w = Math.round(w * scale);
+          h = Math.round(h * scale);
+        }
+
+        // Draw original
+        origCanvas.width  = w;
+        origCanvas.height = h;
+        const origCtx = origCanvas.getContext('2d');
+        origCtx.drawImage(img, 0, 0, w, h);
+
+        const imageData = origCtx.getImageData(0, 0, w, h);
+
+        // Load preset and process
+        try {
+          const preset = await loadPreset(presetSelect.value);
+          const t0 = performance.now();
+          const result = processImage(imageData, preset, { mode: 'preview' });
+          const ms = (performance.now() - t0).toFixed(1);
+
+          procCanvas.width  = w;
+          procCanvas.height = h;
+          const procCtx = procCanvas.getContext('2d');
+          procCtx.putImageData(result, 0, 0);
+
+          timingEl.innerHTML = `Processed in <span>${ms} ms</span>`;
+        } catch (err) {
+          errorEl.textContent = `Pipeline error: ${err.message}`;
+          console.error(err);
+        }
+      };
+
+      img.onerror = () => {
+        errorEl.textContent = 'Failed to load image.';
+        URL.revokeObjectURL(url);
+      };
+
+      img.src = url;
+    }
+
+    fileInput.addEventListener('change', (e) => {
+      currentFile = e.target.files[0] ?? null;
+      run();
+    });
+
+    presetSelect.addEventListener('change', run);
+  </script>
+</body>
+</html>

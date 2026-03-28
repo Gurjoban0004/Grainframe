@@ -1,0 +1,18 @@
+/* UpdateToast.css */
+/* Requirements: 9.3, 9.4 */
+
+.update-toast {
+  position: fixed;
+  bottom: calc(80px + env(safe-area-inset-bottom) + 12px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: #1a1a1a;
+  color: #f0ede8;
+  padding: 10px 20px;
+  border-radius: 20px;
+  font-size: 14px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+  pointer-events: none;
+  z-index: 100;
+  white-space: nowrap;
+}

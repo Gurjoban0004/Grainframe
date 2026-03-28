@@ -1,0 +1,33 @@
+.compare-btn {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 8px 14px;
+  background: rgba(14, 14, 14, 0.75);
+  color: var(--color-text, #f0ede8);
+  border: 1px solid rgba(240, 237, 232, 0.25);
+  border-radius: 22px;
+  font-family: var(--font-stack, sans-serif);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  transition: border-color 80ms, background 80ms;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+}
+
+.compare-btn--pressed {
+  border-color: #c9a96e;
+  background: rgba(201, 169, 110, 0.18);
+  color: #c9a96e;
+}

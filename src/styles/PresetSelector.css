@@ -1,0 +1,44 @@
+.preset-selector {
+  width: 100%;
+}
+
+.preset-selector__scroll {
+  display: flex;
+  flex-direction: row;
+  gap: 8px;
+  padding: 8px 12px;
+  overflow-x: scroll;
+  touch-action: pan-x;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.preset-selector__scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.preset-selector__pill {
+  flex-shrink: 0;
+  min-height: 44px;
+  padding: 0 16px;
+  border: 2px solid transparent;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  font-size: 14px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.pill--active {
+  border: 2px solid #c9a96e;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.4; }
+}
+
+.pill--active.processing {
+  animation: pulse 1s ease-in-out infinite;
+}
