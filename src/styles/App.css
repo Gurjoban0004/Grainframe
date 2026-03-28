@@ -43,7 +43,7 @@ body,
 }
 
 .preset-selector {
-  height: 48px;
+  height: 60px;
   flex-shrink: 0;
 }
 
@@ -54,6 +54,8 @@ body,
   align-items: center;
   justify-content: center;
   gap: 32px;
+  padding-bottom: var(--safe-bottom);
+  box-sizing: border-box;
 }
 
 /* Landscape layout — Requirements: 1.1, 1.2, 1.3, 1.4, 1.5 */
