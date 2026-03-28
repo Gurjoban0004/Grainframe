@@ -19,9 +19,14 @@ export default function CameraView({
   useEffect(() => {
     const canvas = canvasFrontRef.current;
     if (!canvas) return;
-    const ctx = canvas.getContext('2d');
     const data = showOriginal ? previewImageData : preview;
-    if (data) ctx.putImageData(data, 0, 0);
+    if (!data) return;
+    // Always sync canvas dimensions to the data being drawn
+    if (canvas.width !== data.width || canvas.height !== data.height) {
+      canvas.width = data.width;
+      canvas.height = data.height;
+    }
+    canvas.getContext('2d').putImageData(data, 0, 0);
   }, [showOriginal, previewImageData, preview]);
 
   // Effect 2 — new preview arriving: dual-canvas cross-fade sequence
@@ -30,9 +35,16 @@ export default function CameraView({
     const back = canvasBackRef.current;
     const front = canvasFrontRef.current;
     if (!back || !front) return;
+
+    // Sync back canvas dimensions
     back.width = preview.width;
     back.height = preview.height;
     back.getContext('2d').putImageData(preview, 0, 0);
+
+    // Sync front canvas dimensions before fading
+    front.width = preview.width;
+    front.height = preview.height;
+
     front.classList.add('fading');
     const onEnd = () => {
       front.getContext('2d').putImageData(preview, 0, 0);

@@ -1,27 +1,26 @@
 /* ExportButton.css */
 
 .export-btn {
-  background: rgba(255, 255, 255, 0.1);
+  min-width: 44px;
+  min-height: 44px;
+  padding: 8px 16px;
+  background: rgba(14, 14, 14, 0.75);
+  color: #c9a96e;
+  border: 1px solid rgba(240, 237, 232, 0.25);
+  border-radius: 22px;
+  font-family: var(--font-stack, sans-serif);
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  cursor: pointer;
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 20px;
-  color: #c9a96e;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  padding: 8px 16px;
-  min-width: 44px;
-  min-height: 36px;
-  cursor: pointer;
   display: flex;
   align-items: center;
   gap: 6px;
-  font-family: var(--font-stack, sans-serif);
+  transition: opacity 150ms;
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
-  transition: opacity 150ms;
 }
 
 .export-btn:disabled {
