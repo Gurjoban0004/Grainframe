@@ -75,3 +75,18 @@
 .top-overlay > * {
   pointer-events: auto;
 }
+
+/* Shutter overlay — black screen that fades out after capture */
+.shutter-overlay {
+  position: absolute;
+  inset: 0;
+  background: #0e0e0e;
+  z-index: 50;
+  animation: shutter-reveal 300ms ease-out forwards;
+  pointer-events: none;
+}
+
+@keyframes shutter-reveal {
+  0%   { opacity: 1; }
+  100% { opacity: 0; }
+}

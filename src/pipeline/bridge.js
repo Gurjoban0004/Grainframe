@@ -3,6 +3,7 @@
 
 /**
  * Create a managed pipeline worker instance.
+ * Sends a warmup message immediately to force JIT compilation.
  * @returns {{ process: Function, terminate: Function }}
  */
 export function createPipelineWorker() {
@@ -10,6 +11,8 @@ export function createPipelineWorker() {
   let pending = null;
 
   worker.onmessage = function (event) {
+    // Silently ignore warmup-done messages
+    if (event.data?.type === 'warmup-done') return;
     if (!pending) return;
     const { resolve, reject } = pending;
     pending = null;
@@ -27,6 +30,9 @@ export function createPipelineWorker() {
     reject(new Error(err.message || 'Worker error'));
   };
 
+  // Trigger warmup immediately — forces module parse + LUT pre-bake
+  worker.postMessage({ type: 'warmup' });
+
   return {
     /**
      * Process an ImageData through the pipeline.
@@ -39,7 +45,6 @@ export function createPipelineWorker() {
     process(imageData, preset, mode = 'preview', options = {}) {
       return new Promise((resolve, reject) => {
         pending = { resolve, reject };
-        // Transfer the buffer for zero-copy
         worker.postMessage(
           { imageData, preset, mode, ...options },
           [imageData.data.buffer]

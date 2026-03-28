@@ -2,8 +2,9 @@ import { useRef, useEffect } from 'react';
 import '../styles/PresetSelector.css';
 
 const EMPTY_THUMBNAILS = new Map();
+const EMPTY_MAP = new Map();
 
-function PresetCard({ preset, thumbnail, isActive, onSelect }) {
+function PresetCard({ preset, thumbnail, isActive, onSelect, isReady }) {
   const canvasRef = useRef(null);
 
   useEffect(() => {
@@ -11,8 +12,7 @@ function PresetCard({ preset, thumbnail, isActive, onSelect }) {
     const canvas = canvasRef.current;
     canvas.width = thumbnail.width;
     canvas.height = thumbnail.height;
-    const ctx = canvas.getContext('2d');
-    ctx.putImageData(thumbnail, 0, 0);
+    canvas.getContext('2d').putImageData(thumbnail, 0, 0);
   }, [thumbnail]);
 
   return (
@@ -24,6 +24,7 @@ function PresetCard({ preset, thumbnail, isActive, onSelect }) {
     >
       <canvas ref={canvasRef} className="preset-thumbnail" />
       <span className="preset-name">{preset.name}</span>
+      {isReady && !isActive && <div className="preset-ready-dot" />}
     </button>
   );
 }
@@ -35,7 +36,14 @@ function getOrderedPresets(presets, favoriteIds) {
   return { favorites, rest };
 }
 
-export default function PresetSelector({ presets, activePresetId, onSelect, thumbnails = EMPTY_THUMBNAILS, favorites = [] }) {
+export default function PresetSelector({
+  presets,
+  activePresetId,
+  onSelect,
+  thumbnails = EMPTY_THUMBNAILS,
+  favorites = [],
+  readyPresets = EMPTY_MAP,
+}) {
   const { favorites: favPresets, rest } = getOrderedPresets(presets, favorites);
   const hasFavorites = favPresets.length > 0;
 
@@ -50,6 +58,7 @@ export default function PresetSelector({ presets, activePresetId, onSelect, thum
               thumbnail={thumbnails.get(preset.id)}
               isActive={preset.id === activePresetId}
               onSelect={onSelect}
+              isReady={readyPresets.has(preset.id)}
             />
           ))}
           <div className="preset-divider" aria-hidden="true" />
@@ -62,6 +71,7 @@ export default function PresetSelector({ presets, activePresetId, onSelect, thum
           thumbnail={thumbnails.get(preset.id)}
           isActive={preset.id === activePresetId}
           onSelect={onSelect}
+          isReady={readyPresets.has(preset.id)}
         />
       ))}
     </div>

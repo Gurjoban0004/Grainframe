@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import classicChrome from './presets/classic-chrome.json';
 import portra from './presets/portra.json';
 import silver from './presets/silver.json';
@@ -15,6 +15,8 @@ import { useImagePipeline } from './hooks/useImagePipeline.js';
 import { useThumbnails } from './hooks/useThumbnails.js';
 import { usePresetHistory } from './hooks/usePresetHistory.js';
 import { useBatchProcessing, MAX_BATCH } from './hooks/useBatchProcessing.js';
+import { usePresetCache } from './hooks/usePresetCache.js';
+import { saveLastPhoto } from './utils/lastPhoto.js';
 import CameraView from './components/CameraView.jsx';
 import ExportButton from './components/ExportButton.jsx';
 import PresetSelector from './components/PresetSelector.jsx';
@@ -27,6 +29,15 @@ import './styles/App.css';
 
 const PRESETS = [classicChrome, portra, silver, softFilm, golden, faded, velvia, cinema];
 const PRESET_IDS = PRESETS.map(p => p.id);
+
+function getDefaultPreset() {
+  const favIds = getFavoritePresets(PRESET_IDS, 1);
+  if (favIds.length > 0) {
+    const fav = PRESETS.find(p => p.id === favIds[0]);
+    if (fav) return fav;
+  }
+  return classicChrome;
+}
 
 export default function App() {
   // ── Batch mode ──
@@ -56,6 +67,12 @@ export default function App() {
   }
 
   // ── Camera ──
+  const cameraViewRef = useRef(null);
+
+  function handleShutterDismiss() {
+    cameraViewRef.current?.dismissShutter();
+  }
+
   const {
     captureRef,
     importRef,
@@ -64,11 +81,12 @@ export default function App() {
     previewImageData: rawPreview,
     fullImageData: rawFull,
     error: cameraError,
-  } = useCamera({ onBatchSelect: handleBatchSelect });
+  } = useCamera({ onBatchSelect: handleBatchSelect, onShutterDismiss: handleShutterDismiss });
 
   // ── Pipeline ──
   const {
     preview,
+    setPreview,
     isProcessing,
     error: pipelineError,
     processPreview,
@@ -82,7 +100,7 @@ export default function App() {
     pushPreset,
     undo: undoPreset,
     reset: resetHistory,
-  } = usePresetHistory('classic-chrome');
+  } = usePresetHistory(getDefaultPreset().id);
 
   const activePreset = PRESETS.find(p => p.id === activePresetId) ?? classicChrome;
 
@@ -100,37 +118,82 @@ export default function App() {
   const [favorites, setFavorites] = useState(() => getFavoritePresets(PRESET_IDS));
   const [showOriginal, setShowOriginal] = useState(false);
 
-  // On new raw photo: clear crop, reset history, exit batch
+  // ── Preset cache (background processing) ──
+  const {
+    cache: presetCache,
+    getProcessedPreview,
+    startBackgroundProcessing,
+    addToCache,
+    invalidate: invalidateCache,
+  } = usePresetCache(PRESETS, activePresetId, previewImageData);
+
+  // Track whether background processing has been triggered for the current image
+  const bgTriggeredRef = useRef(null);
+
+  // On new raw photo: clear crop, reset history, exit batch, use smart default
   useEffect(() => {
     if (rawPreview) {
+      const defaultPreset = getDefaultPreset();
       setBatchMode(false);
       clearBatch();
       setCroppedPreview(null);
       setCroppedFull(null);
       setCropState(null);
-      resetHistory('classic-chrome');
-      processPreview(rawPreview, classicChrome);
+      invalidateCache();
+      bgTriggeredRef.current = null;
+      resetHistory(defaultPreset.id);
+      processPreview(rawPreview, defaultPreset);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rawPreview]);
+
+  // Save last photo thumbnail whenever a processed preview is ready
+  useEffect(() => {
+    if (preview) saveLastPhoto(preview);
+  }, [preview]);
+
+  // Trigger background processing once per photo load, after first preset is ready
+  useEffect(() => {
+    if (preview && previewImageData && bgTriggeredRef.current !== previewImageData) {
+      bgTriggeredRef.current = previewImageData;
+      startBackgroundProcessing(preview);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preview, previewImageData]);
+
+  // When a worker result arrives for a cache miss, seed it into the cache
+  useEffect(() => {
+    if (preview && activePreset && !getProcessedPreview(activePreset.id)) {
+      addToCache(activePreset.id, preview);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preview]);
 
   function handleSelectPreset(id) {
     const preset = PRESETS.find(p => p.id === id);
     validatePreset(preset);
     if (batchMode) {
-      // In batch mode: push to history for the active preset display,
-      // then regenerate all batch thumbnails with the new preset
       pushPreset(id);
       regenerateThumbnails(photos, preset);
     } else {
       pushPreset(id);
-      processPreview(previewImageData, preset);
+      const cached = getProcessedPreview(id);
+      if (cached) {
+        // Instant cache hit — set preview directly, skip worker
+        setPreview(cached);
+      } else {
+        processPreview(previewImageData, preset);
+      }
     }
   }
 
   function handleUndo() {
     const prevId = undoPreset();
-    if (prevId) {
+    if (!prevId) return;
+    const cached = getProcessedPreview(prevId);
+    if (cached) {
+      setPreview(cached);
+    } else {
       const preset = PRESETS.find(p => p.id === prevId);
       processPreview(previewImageData, preset);
     }
@@ -150,6 +213,8 @@ export default function App() {
     setCroppedFull(newFull);
     setCropState(cropRect);
     setIsCropMode(false);
+    invalidateCache();
+    bgTriggeredRef.current = null;
     processPreview(newPreview, activePreset);
   }
 
@@ -158,6 +223,8 @@ export default function App() {
     setCroppedFull(null);
     setCropState(null);
     setIsCropMode(false);
+    invalidateCache();
+    bgTriggeredRef.current = null;
     if (rawPreview) processPreview(rawPreview, activePreset);
   }
 
@@ -228,6 +295,7 @@ export default function App() {
       {/* ── Preview area ── */}
       <div className="preview-area">
         <CameraView
+          ref={cameraViewRef}
           captureRef={captureRef}
           importRef={importRef}
           handleFileChange={handleFileChange}
@@ -283,6 +351,7 @@ export default function App() {
               isProcessing={isProcessing}
               thumbnails={thumbnails}
               favorites={favorites}
+              readyPresets={presetCache}
             />
           </div>
         )}
@@ -307,7 +376,10 @@ export default function App() {
             <button
               className="capture-btn"
               aria-label="Take photo"
-              onClick={() => captureRef.current?.click()}
+              onClick={() => {
+                cameraViewRef.current?.triggerShutter();
+                captureRef.current?.click();
+              }}
             >
               <span className="capture-btn-inner" />
             </button>

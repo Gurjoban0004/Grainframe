@@ -35,33 +35,35 @@ export default function ExportButton({ fullImageData, processExport, preset, onE
   async function handleExport() {
     if (!fullImageData || status === 'processing') return;
 
-    let processedData = null;
     setStatus('processing');
     try {
-      processedData = await processExport(fullImageData, preset);
-      let canvas;
-      if (typeof OffscreenCanvas !== 'undefined') {
-        canvas = new OffscreenCanvas(processedData.width, processedData.height);
-      } else {
-        canvas = document.createElement('canvas');
-        canvas.width = processedData.width;
-        canvas.height = processedData.height;
-      }
-      const ctx = canvas.getContext('2d');
-      ctx.putImageData(processedData, 0, 0);
-      const blob = canvas.convertToBlob
-        ? await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.92 })
-        : await new Promise((res) => canvas.toBlob(res, 'image/jpeg', 0.92));
+      const processedData = await processExport(fullImageData, preset);
+
+      // Always use a regular canvas for maximum compatibility
+      const canvas = document.createElement('canvas');
+      canvas.width = processedData.width;
+      canvas.height = processedData.height;
+      canvas.getContext('2d').putImageData(processedData, 0, 0);
+
+      const blob = await new Promise((resolve, reject) =>
+        canvas.toBlob(
+          b => b ? resolve(b) : reject(new Error('toBlob returned null')),
+          'image/jpeg',
+          0.92
+        )
+      );
+
       const filename = makeFilename(preset.id);
       await exportImage(blob, filename);
       onSuccess?.();
       setStatus('saved');
       setTimeout(() => setStatus('idle'), 1500);
-    } catch {
-      onError(ErrorTypes.EXPORT_FAILED);
+    } catch (err) {
+      // AbortError = user cancelled share sheet — not an error
+      if (err?.name !== 'AbortError') {
+        onError(ErrorTypes.EXPORT_FAILED);
+      }
       setStatus('idle');
-    } finally {
-      processedData = null;
     }
   }
 

@@ -1,8 +1,8 @@
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useState, useImperativeHandle, forwardRef } from 'react';
 import EmptyState from './EmptyState';
 import '../styles/CameraView.css';
 
-export default function CameraView({
+const CameraView = forwardRef(function CameraView({
   captureRef,
   importRef,
   handleFileChange,
@@ -11,37 +11,58 @@ export default function CameraView({
   isProcessing,
   showOriginal,
   children,
-}) {
+}, ref) {
   const canvasBackRef = useRef(null);
   const canvasFrontRef = useRef(null);
+  const [showShutter, setShowShutter] = useState(false);
+  // Track the last preview we cross-faded to, so cache hits that are already
+  // drawn don't re-trigger the fade animation
+  const lastFadedPreviewRef = useRef(null);
 
-  // Effect 1 — showOriginal toggle: instant putImageData, no CSS transition
+  useImperativeHandle(ref, () => ({
+    triggerShutter() { setShowShutter(true); },
+    dismissShutter() { setShowShutter(false); },
+  }));
+
+  // What to draw right now: processed > unprocessed > nothing
+  const currentImage = showOriginal
+    ? previewImageData
+    : (preview || previewImageData);
+
+  // Draw current image to front canvas immediately
   useEffect(() => {
+    if (!currentImage) return;
     const canvas = canvasFrontRef.current;
     if (!canvas) return;
-    const data = showOriginal ? previewImageData : preview;
-    if (!data) return;
-    // Always sync canvas dimensions to the data being drawn
-    if (canvas.width !== data.width || canvas.height !== data.height) {
-      canvas.width = data.width;
-      canvas.height = data.height;
+    if (canvas.width !== currentImage.width || canvas.height !== currentImage.height) {
+      canvas.width = currentImage.width;
+      canvas.height = currentImage.height;
     }
-    canvas.getContext('2d').putImageData(data, 0, 0);
-  }, [showOriginal, previewImageData, preview]);
+    canvas.getContext('2d').putImageData(currentImage, 0, 0);
+  }, [currentImage]);
 
-  // Effect 2 — new preview arriving: dual-canvas cross-fade sequence
+  // Dismiss shutter once the image is drawn
+  useEffect(() => {
+    if (currentImage && showShutter) {
+      requestAnimationFrame(() => setShowShutter(false));
+    }
+  }, [currentImage, showShutter]);
+
+  // Cross-fade only when a NEW processed preview arrives (not on cache hits already drawn)
   useEffect(() => {
     if (!preview || showOriginal) return;
+    // Skip if this exact preview object was already faded to
+    if (lastFadedPreviewRef.current === preview) return;
+    lastFadedPreviewRef.current = preview;
+
     const back = canvasBackRef.current;
     const front = canvasFrontRef.current;
     if (!back || !front) return;
 
-    // Sync back canvas dimensions
     back.width = preview.width;
     back.height = preview.height;
     back.getContext('2d').putImageData(preview, 0, 0);
 
-    // Sync front canvas dimensions before fading
     front.width = preview.width;
     front.height = preview.height;
 
@@ -50,14 +71,12 @@ export default function CameraView({
       front.getContext('2d').putImageData(preview, 0, 0);
       front.classList.remove('fading');
       back.getContext('2d').clearRect(0, 0, back.width, back.height);
-      front.removeEventListener('transitionend', onEnd);
     };
     front.addEventListener('transitionend', onEnd, { once: true });
-  }, [preview]);
+  }, [preview, showOriginal]);
 
   return (
     <>
-      {/* Hidden file inputs */}
       <input
         ref={captureRef}
         type="file"
@@ -75,18 +94,18 @@ export default function CameraView({
         style={{ display: 'none' }}
       />
 
-      {/* Dual canvas stack */}
       <canvas ref={canvasBackRef} className="preview-canvas preview-canvas--back" />
       <canvas ref={canvasFrontRef} className="preview-canvas preview-canvas--front" />
 
-      {/* Empty state */}
       {!previewImageData && <EmptyState />}
 
-      {/* Processing bar */}
+      {showShutter && <div className="shutter-overlay" />}
+
       {isProcessing && <div className="processing-bar" />}
 
-      {/* Top overlay slot (CompareButton + ExportButton) */}
       {children}
     </>
   );
-}
+});
+
+export default CameraView;

@@ -16,7 +16,7 @@
  */
 
 import { useState } from 'react';
-import { loadImage, resizeToMax } from '../utils/image.js';
+import { loadImageDual, resizeToMax } from '../utils/image.js';
 import { detectAutoRotation, readOrientation, applyOrientation } from '../utils/exif.js';
 import { getMaxDimension } from '../utils/memory.js';
 import { makeFilename } from '../utils/export.js';
@@ -33,15 +33,30 @@ function imageDataToDataURL(imageData) {
 }
 
 async function loadOriented(file) {
-  const bitmap = await loadImage(file);
-  const [autoRotates, orientation] = await Promise.all([
-    detectAutoRotation(),
+  let bitmapOptions = {};
+  try {
+    const testBlob = new Blob([new Uint8Array([137,80,78,71])], { type: 'image/png' });
+    await createImageBitmap(testBlob, { imageOrientation: 'none' });
+    bitmapOptions = { imageOrientation: 'none' };
+  } catch { /* not supported */ }
+
+  const [orientation, { previewBitmap }] = await Promise.all([
     readOrientation(file),
+    loadImageDual(file, 1024, 1024, bitmapOptions),
   ]);
-  const imageData = autoRotates
-    ? applyOrientation(bitmap, 1)
-    : applyOrientation(bitmap, orientation);
-  bitmap.close?.();
+  const autoRotates = await detectAutoRotation();
+
+  let imageData;
+  if (!autoRotates && orientation !== 1) {
+    imageData = applyOrientation(previewBitmap, orientation);
+  } else {
+    const canvas = document.createElement('canvas');
+    canvas.width = previewBitmap.width;
+    canvas.height = previewBitmap.height;
+    canvas.getContext('2d').drawImage(previewBitmap, 0, 0);
+    imageData = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height);
+  }
+  previewBitmap.close?.();
   return imageData;
 }
 

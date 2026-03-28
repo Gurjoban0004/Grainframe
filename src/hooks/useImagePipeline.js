@@ -138,5 +138,5 @@ export function useImagePipeline() {
     return result;
   }
 
-  return { preview, isProcessing, error, processPreview, processExport };
+  return { preview, setPreview, isProcessing, error, processPreview, processExport };
 }

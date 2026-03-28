@@ -42,8 +42,6 @@ export default function CropOverlay({ imageData, initialCrop, hasPreviousCrop, o
 
   const handlePointerDown = useCallback((e) => {
     e.preventDefault();
-    // Use the canvas's rendered bounding rect for accurate coordinate mapping,
-    // since the canvas may be letterboxed inside the container.
     const canvas = canvasRef.current;
     if (!canvas) return;
     const rect = canvas.getBoundingClientRect();
@@ -54,6 +52,7 @@ export default function CropOverlay({ imageData, initialCrop, hasPreviousCrop, o
       startY: clientY,
       startCropX: cropRect.x,
       startCropY: cropRect.y,
+      // Use the canvas rendered size for coordinate mapping
       containerWidth: rect.width,
       containerHeight: rect.height,
     };
