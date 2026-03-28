@@ -18,7 +18,6 @@ export default function CompareButton({ onPressStart, onPressEnd, visible }) {
 
   return (
     <button
-      role="button"
       className={`compare-btn${pressed ? ' compare-btn--pressed' : ''}`}
       aria-label="Show original photo"
       onPointerDown={handlePressStart}

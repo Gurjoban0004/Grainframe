@@ -1,7 +1,12 @@
 import { useEffect, useState } from 'react';
 import classicChrome from './presets/classic-chrome.json';
+import portra from './presets/portra.json';
+import silver from './presets/silver.json';
 import softFilm from './presets/soft-film.json';
+import golden from './presets/golden.json';
+import faded from './presets/faded.json';
 import velvia from './presets/velvia.json';
+import cinema from './presets/cinema.json';
 import { validatePreset } from './utils/presets.js';
 import { useCamera } from './hooks/useCamera.js';
 import { useImagePipeline } from './hooks/useImagePipeline.js';
@@ -13,7 +18,7 @@ import ErrorBanner from './components/ErrorBanner.jsx';
 import UpdateToast from './components/UpdateToast.jsx';
 import './styles/App.css';
 
-const PRESETS = [classicChrome, softFilm, velvia];
+const PRESETS = [classicChrome, portra, silver, softFilm, golden, faded, velvia, cinema];
 
 export default function App() {
   const {
@@ -43,6 +48,7 @@ export default function App() {
       setActivePreset(classicChrome);
       processPreview(previewImageData, classicChrome);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [previewImageData]);
 
   function handleSelectPreset(id) {

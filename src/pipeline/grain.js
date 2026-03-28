@@ -2,6 +2,7 @@
 // No framework imports.
 
 import { createCanvas, getContext } from './canvas-utils.js';
+import { gaussianBlur } from './blur.js';
 
 // Mulberry32 — fast seeded PRNG
 function mulberry32(seed) {
@@ -49,18 +50,22 @@ export function applyGrain(imageData, preset, options = {}) {
   noiseCtx.putImageData(noiseData, 0, 0);
 
   // Blur the noise field
+  let blurred;
   const blurCanvas = createCanvas(width, height);
   const blurCtx = getContext(blurCanvas);
   if (typeof blurCtx.filter !== 'undefined') {
     blurCtx.filter = `blur(${blurRadius}px)`;
     blurCtx.drawImage(noiseCanvas, 0, 0);
+    blurred = blurCtx.getImageData(0, 0, width, height);
   } else {
-    blurCtx.drawImage(noiseCanvas, 0, 0);
+    // Fallback: use software gaussian blur
+    const noiseImageData = noiseCtx.getImageData(0, 0, width, height);
+    blurred = gaussianBlur(noiseImageData, blurRadius);
   }
-  const blurred = blurCtx.getImageData(0, 0, width, height);
   const bd = blurred.data;
 
   // Apply grain to image
+  const isMonochrome = (preset.saturation ?? 1) < 0.05;
   const d = imageData.data;
   for (let i = 0; i < d.length; i += 4) {
     const r = d[i], g = d[i + 1], b = d[i + 2];
@@ -73,12 +78,20 @@ export function applyGrain(imageData, preset, options = {}) {
     // Noise value centered at 0 (-0.5 to 0.5)
     const noise = (bd[i] / 255) - 0.5;
 
-    const grainR = noise * intensity * lumScale * 1.1 * 255;
-    const grainG = noise * intensity * lumScale * 1.0 * 255;
-    const grainB = noise * intensity * lumScale * 1.1 * 255;
+    if (isMonochrome) {
+      // Same grain on all channels — no colored speckles in B&W
+      const grainValue = noise * intensity * lumScale * 255;
+      d[i]     = Math.min(255, Math.max(0, r + grainValue));
+      d[i + 1] = Math.min(255, Math.max(0, g + grainValue));
+      d[i + 2] = Math.min(255, Math.max(0, b + grainValue));
+    } else {
+      const grainR = noise * intensity * lumScale * 1.1 * 255;
+      const grainG = noise * intensity * lumScale * 1.0 * 255;
+      const grainB = noise * intensity * lumScale * 1.1 * 255;
 
-    d[i]     = Math.min(255, Math.max(0, r + grainR));
-    d[i + 1] = Math.min(255, Math.max(0, g + grainG));
-    d[i + 2] = Math.min(255, Math.max(0, b + grainB));
+      d[i]     = Math.min(255, Math.max(0, r + grainR));
+      d[i + 1] = Math.min(255, Math.max(0, g + grainG));
+      d[i + 2] = Math.min(255, Math.max(0, b + grainB));
+    }
   }
 }

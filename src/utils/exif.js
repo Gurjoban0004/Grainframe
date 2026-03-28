@@ -122,7 +122,14 @@ export function applyOrientation(bitmap, orientation) {
   const cw = rotated ? sh : sw;
   const ch = rotated ? sw : sh;
 
-  const canvas = new OffscreenCanvas(cw, ch);
+  let canvas;
+  if (typeof OffscreenCanvas !== 'undefined') {
+    canvas = new OffscreenCanvas(cw, ch);
+  } else {
+    canvas = document.createElement('canvas');
+    canvas.width = cw;
+    canvas.height = ch;
+  }
   const ctx = canvas.getContext('2d');
 
   ctx.save();

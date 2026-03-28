@@ -19,15 +19,25 @@ export function downscale(imageData, factor) {
   const dstH = Math.floor(srcH * factor);
 
   // Draw source ImageData onto a temp canvas, then scale-draw onto destination canvas
-  const srcCanvas = new OffscreenCanvas(srcW, srcH);
+  const srcCanvas = createFallbackCanvas(srcW, srcH);
   const srcCtx = srcCanvas.getContext('2d');
   srcCtx.putImageData(imageData, 0, 0);
 
-  const dstCanvas = new OffscreenCanvas(dstW, dstH);
+  const dstCanvas = createFallbackCanvas(dstW, dstH);
   const dstCtx = dstCanvas.getContext('2d');
   dstCtx.drawImage(srcCanvas, 0, 0, dstW, dstH);
 
   return dstCtx.getImageData(0, 0, dstW, dstH);
+}
+
+function createFallbackCanvas(width, height) {
+  if (typeof OffscreenCanvas !== 'undefined') {
+    return new OffscreenCanvas(width, height);
+  }
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  return canvas;
 }
 
 function isIOS() {

@@ -2,14 +2,18 @@ import { ErrorTypes } from './errors.js';
 
 /**
  * Load a Blob into an ImageBitmap.
- * Uses default createImageBitmap so the browser applies its own
- * EXIF orientation handling (if any). detectAutoRotation() tells
- * us whether it did, so we can skip manual correction.
+ * Tries createImageBitmap with imageOrientation:'none' first (Chrome/Firefox).
+ * Falls back to plain createImageBitmap (Safari, which ignores the option but
+ * applies its own EXIF orientation — detectAutoRotation() tells us which path ran).
  * @param {Blob} blob
  * @returns {Promise<ImageBitmap>}
  */
 export async function loadImage(blob) {
-  return createImageBitmap(blob);
+  try {
+    return await createImageBitmap(blob, { imageOrientation: 'none' });
+  } catch {
+    return createImageBitmap(blob);
+  }
 }
 
 /**
@@ -28,10 +32,14 @@ export function resizeToMax(imageData, maxDimension) {
   const newH = Math.floor(h * scale);
 
   try {
-    const src = new OffscreenCanvas(w, h);
+    const src = typeof OffscreenCanvas !== 'undefined'
+      ? new OffscreenCanvas(w, h)
+      : Object.assign(document.createElement('canvas'), { width: w, height: h });
     src.getContext('2d').putImageData(imageData, 0, 0);
 
-    const dst = new OffscreenCanvas(newW, newH);
+    const dst = typeof OffscreenCanvas !== 'undefined'
+      ? new OffscreenCanvas(newW, newH)
+      : Object.assign(document.createElement('canvas'), { width: newW, height: newH });
     const ctx = dst.getContext('2d');
     ctx.drawImage(src, 0, 0, newW, newH);
 

@@ -405,3 +405,59 @@ describe('applyGrain — property tests', () => {
     );
   });
 });
+
+// ---------------------------------------------------------------------------
+// Monochrome grain fix — R, G, B grain deltas must be identical when saturation < 0.05
+// ---------------------------------------------------------------------------
+describe('applyGrain — monochrome mode (saturation < 0.05)', () => {
+  it('R, G, B grain deltas are identical for every pixel when saturation = 0', () => {
+    const width = 8, height = 8;
+    const imageData = makeImageData(width, height, 120, 130, 110);
+    const original = new Uint8ClampedArray(imageData.data);
+
+    const preset = { grainIntensity: 0.035, grainSize: 1.4, grainSeed: 17, saturation: 0.0 };
+    applyGrain(imageData, preset);
+
+    for (let i = 0; i < imageData.data.length; i += 4) {
+      const deltaR = imageData.data[i]     - original[i];
+      const deltaG = imageData.data[i + 1] - original[i + 1];
+      const deltaB = imageData.data[i + 2] - original[i + 2];
+      expect(deltaR).toBe(deltaG);
+      expect(deltaR).toBe(deltaB);
+    }
+  });
+
+  it('R, G, B grain deltas are identical when saturation = 0.04 (just under threshold)', () => {
+    const imageData = makeImageData(4, 4, 100, 100, 100);
+    const original = new Uint8ClampedArray(imageData.data);
+
+    const preset = { grainIntensity: 0.03, grainSize: 1.0, grainSeed: 5, saturation: 0.04 };
+    applyGrain(imageData, preset);
+
+    for (let i = 0; i < imageData.data.length; i += 4) {
+      const deltaR = imageData.data[i]     - original[i];
+      const deltaG = imageData.data[i + 1] - original[i + 1];
+      const deltaB = imageData.data[i + 2] - original[i + 2];
+      expect(deltaR).toBe(deltaG);
+      expect(deltaR).toBe(deltaB);
+    }
+  });
+
+  it('R, G, B grain deltas are NOT all identical for color presets (saturation = 0.88)', () => {
+    // With the 1.1/1.0/1.1 multipliers, R and B get more grain than G
+    // so at least some pixels should differ between channels
+    const imageData = makeImageData(8, 8, 128, 128, 128);
+    const original = new Uint8ClampedArray(imageData.data);
+
+    const preset = { grainIntensity: 0.04, grainSize: 1.0, grainSeed: 42, saturation: 0.88 };
+    applyGrain(imageData, preset);
+
+    let foundAsymmetry = false;
+    for (let i = 0; i < imageData.data.length; i += 4) {
+      const deltaR = Math.abs(imageData.data[i]     - original[i]);
+      const deltaG = Math.abs(imageData.data[i + 1] - original[i + 1]);
+      if (deltaR !== deltaG) { foundAsymmetry = true; break; }
+    }
+    expect(foundAsymmetry).toBe(true);
+  });
+});

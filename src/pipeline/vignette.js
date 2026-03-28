@@ -47,9 +47,9 @@ export function applyVignette(imageData, preset) {
       const g = srgbToLinearLUT[d[i + 1]] * mul;
       const b = srgbToLinearLUT[d[i + 2]] * mul;
 
-      d[i]     = linearToSrgbLUT[Math.round(Math.min(1, r) * 4095)];
-      d[i + 1] = linearToSrgbLUT[Math.round(Math.min(1, g) * 4095)];
-      d[i + 2] = linearToSrgbLUT[Math.round(Math.min(1, b) * 4095)];
+      d[i]     = linearToSrgbLUT[Math.min(4095, Math.round(Math.min(1, r) * 4095))];
+      d[i + 1] = linearToSrgbLUT[Math.min(4095, Math.round(Math.min(1, g) * 4095))];
+      d[i + 2] = linearToSrgbLUT[Math.min(4095, Math.round(Math.min(1, b) * 4095))];
     }
   }
 }

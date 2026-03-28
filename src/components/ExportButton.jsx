@@ -39,10 +39,19 @@ export default function ExportButton({ fullImageData, processExport, preset, onE
     setStatus('processing');
     try {
       processedData = await processExport(fullImageData, preset);
-      const canvas = new OffscreenCanvas(processedData.width, processedData.height);
+      let canvas;
+      if (typeof OffscreenCanvas !== 'undefined') {
+        canvas = new OffscreenCanvas(processedData.width, processedData.height);
+      } else {
+        canvas = document.createElement('canvas');
+        canvas.width = processedData.width;
+        canvas.height = processedData.height;
+      }
       const ctx = canvas.getContext('2d');
       ctx.putImageData(processedData, 0, 0);
-      const blob = await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.92 });
+      const blob = canvas.convertToBlob
+        ? await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.92 })
+        : await new Promise((res) => canvas.toBlob(res, 'image/jpeg', 0.92));
       const filename = makeFilename(preset.id);
       await exportImage(blob, filename);
       setStatus('saved');
