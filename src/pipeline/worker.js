@@ -11,9 +11,12 @@ import golden from '../presets/golden.json';
 import faded from '../presets/faded.json';
 import velvia from '../presets/velvia.json';
 import cinema from '../presets/cinema.json';
+import darkroom from '../presets/darkroom.json';
+import earth from '../presets/earth.json';
+import expired from '../presets/expired.json';
 
 // Pre-bake all LUTs at module load time (runs when worker is created)
-prebakeLUTs([classicChrome, portra, silver, softFilm, golden, faded, velvia, cinema]);
+prebakeLUTs([classicChrome, portra, silver, softFilm, golden, faded, velvia, cinema, darkroom, earth, expired]);
 
 self.onmessage = async function (event) {
   const { type, imageData, preset, mode, previewWidth, exportWidth } = event.data;

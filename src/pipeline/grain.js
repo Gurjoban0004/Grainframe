@@ -21,8 +21,7 @@ function mulberry32(seed) {
  * @param {object} options { mode: 'preview'|'export', previewWidth, exportWidth }
  */
 export function applyGrain(imageData, preset, options = {}) {
-  const MAX_INTENSITY = 0.04;
-  const intensity = Math.min(MAX_INTENSITY, Math.max(0, preset.grainIntensity ?? 0.02));
+  const intensity = Math.max(0, preset.grainIntensity ?? 0.02);
   if (intensity === 0) return;
 
   const { width, height } = imageData;

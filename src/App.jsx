@@ -7,6 +7,9 @@ import golden from './presets/golden.json';
 import faded from './presets/faded.json';
 import velvia from './presets/velvia.json';
 import cinema from './presets/cinema.json';
+import darkroom from './presets/darkroom.json';
+import earth from './presets/earth.json';
+import expired from './presets/expired.json';
 import { validatePreset } from './utils/presets.js';
 import { recordPresetUsage, getFavoritePresets } from './utils/presetStorage.js';
 import { applyCrop } from './utils/crop.js';
@@ -27,7 +30,19 @@ import ErrorBanner from './components/ErrorBanner.jsx';
 import UpdateToast from './components/UpdateToast.jsx';
 import './styles/App.css';
 
-const PRESETS = [classicChrome, portra, silver, softFilm, golden, faded, velvia, cinema];
+const PRESETS = [
+  classicChrome,  // 1.  Cool, muted, cinematic
+  portra,         // 2.  Warm, soft skin tones
+  silver,         // 3.  B&W, warm toned, elegant
+  darkroom,       // 4.  B&W, hard contrast, heavy grain
+  softFilm,       // 5.  Warm, faded, gentle
+  earth,          // 6.  Ultra muted, olive, editorial
+  expired,        // 7.  Olive, heavy grain, extreme vignette
+  golden,         // 8.  Amber warmth, golden hour
+  faded,          // 9.  Ultra-washed, cool, dreamy
+  velvia,         // 10. Punchy, vivid, saturated
+  cinema,         // 11. Teal shadows, warm highlights
+];
 const PRESET_IDS = PRESETS.map(p => p.id);
 
 function getDefaultPreset() {

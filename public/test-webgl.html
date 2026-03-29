@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WebGL Parity Test</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0e0e0e;
+      color: #e0e0e0;
+      font-family: system-ui, sans-serif;
+      padding: 32px;
+      min-height: 100vh;
+    }
+
+    h1 {
+      font-size: 1rem;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: #888;
+      margin-bottom: 24px;
+    }
+
+    .controls {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 32px;
+      flex-wrap: wrap;
+    }
+
+    label { font-size: 0.85rem; color: #888; }
+
+    input[type="file"], select {
+      background: #1a1a1a;
+      border: 1px solid #333;
+      color: #e0e0e0;
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 0.9rem;
+      cursor: pointer;
+    }
+
+    select { min-width: 180px; }
+
+    .canvases {
+      display: flex;
+      gap: 20px;
+      flex-wrap: wrap;
+      margin-bottom: 24px;
+      align-items: flex-start;
+    }
+
+    .canvas-wrap {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .canvas-label {
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: #fff;
+    }
+
+    canvas {
+      width: 380px;
+      height: auto;
+      display: block;
+      background: #1a1a1a;
+      border-radius: 4px;
+      border: 1px solid #2a2a2a;
+    }
+
+    .stats {
+      border: 1px solid #2a2a2a;
+      border-radius: 8px;
+      padding: 20px 24px;
+      max-width: 480px;
+      margin-bottom: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .stat-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.875rem;
+      color: #888;
+    }
+
+    .stat-row span:last-child {
+      color: #7dd3fc;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .verdict {
+      font-size: 0.9rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      padding: 10px 16px;
+      border-radius: 6px;
+      max-width: 480px;
+      margin-bottom: 24px;
+      display: none;
+    }
+
+    .verdict.ok {
+      background: #14532d;
+      color: #86efac;
+      border: 1px solid #166534;
+    }
+
+    .verdict.fail {
+      background: #450a0a;
+      color: #fca5a5;
+      border: 1px solid #7f1d1d;
+    }
+
+    #error {
+      color: #f87171;
+      font-size: 0.85rem;
+      margin-bottom: 16px;
+      min-height: 1.2em;
+    }
+
+    #status {
+      font-size: 0.85rem;
+      color: #888;
+      margin-bottom: 16px;
+      min-height: 1.2em;
+    }
+  </style>
+</head>
+<body>
+  <h1>Grainframe — WebGL vs Canvas Parity Test</h1>
+
+  <div class="controls">
+    <label for="fileInput">Photo</label>
+    <input type="file" id="fileInput" accept="image/*" />
+
+    <label for="presetSelect">Preset</label>
+    <select id="presetSelect">
+      <option value="classic-chrome">Classic Chrome</option>
+      <option value="cinema">Cinema</option>
+      <option value="darkroom">Darkroom</option>
+      <option value="earth">Earth</option>
+      <option value="expired">Expired</option>
+      <option value="faded">Faded</option>
+      <option value="golden">Golden</option>
+      <option value="portra">Portra</option>
+      <option value="silver">Silver</option>
+      <option value="soft-film">Soft Film</option>
+      <option value="velvia">Velvia</option>
+      <optgroup label="Debug (isolate stages)">
+        <option value="__test_curve">TEST: Curve Only</option>
+        <option value="__test_color">TEST: Color Only</option>
+        <option value="__test_vignette">TEST: Vignette Only</option>
+        <option value="__test_grain">TEST: Grain Only</option>
+        <option value="__test_identity">TEST: Identity (no-op)</option>
+      </optgroup>
+    </select>
+  </div>
+
+  <div id="error"></div>
+  <div id="status">Select a photo to begin.</div>
+
+  <div class="canvases">
+    <div class="canvas-wrap">
+      <div class="canvas-label">Original</div>
+      <canvas id="origCanvas"></canvas>
+    </div>
+    <div class="canvas-wrap">
+      <div class="canvas-label">WebGL</div>
+      <canvas id="webglCanvas"></canvas>
+    </div>
+    <div class="canvas-wrap">
+      <div class="canvas-label">Canvas API</div>
+      <canvas id="canvasCanvas"></canvas>
+    </div>
+  </div>
+
+  <div class="verdict" id="verdict"></div>
+
+  <div class="stats" id="stats" style="display:none">
+    <div class="stat-row">
+      <span>Max pixel difference</span>
+      <span id="statMaxDiff">—</span>
+    </div>
+    <div class="stat-row">
+      <span>Average pixel difference</span>
+      <span id="statAvgDiff">—</span>
+    </div>
+    <div class="stat-row">
+      <span>WebGL time</span>
+      <span id="statWebGLTime">—</span>
+    </div>
+    <div class="stat-row">
+      <span>Canvas time</span>
+      <span id="statCanvasTime">—</span>
+    </div>
+  </div>
+
+  <script type="module">
+    import { WebGLRenderer } from '/src/pipeline/webgl/renderer.js';
+    import { applyColor }    from '/src/pipeline/color.js';
+    import { applyVignette } from '/src/pipeline/vignette.js';
+    import { buildToneCurveLUTs, applyToneCurve } from '/src/pipeline/tonecurve.js';
+    import { applyGrain }   from '/src/pipeline/grain.js';
+    import { applySharpen } from '/src/pipeline/sharpen.js';
+
+    // ── Canvas-only pipeline (no WebGL) ──────────────────────────────────────
+    function processCanvas(imageData, preset, options = {}) {
+      const data = new Uint8ClampedArray(imageData.data);
+      const out  = new ImageData(data, imageData.width, imageData.height);
+      applyColor(out, preset);
+      applyVignette(out, preset);
+      const luts = buildToneCurveLUTs(preset);
+      applyToneCurve(out, luts);
+      applyGrain(out, preset, options);
+      applySharpen(out, preset);
+      return out;
+    }
+
+    // ── Preset cache ──────────────────────────────────────────────────────────
+    const IDENTITY_CURVE = [[0,0],[255,255]];
+    const DEBUG_PRESETS = {
+      __test_identity: {
+        id: '__test_identity',
+        rMult: 1, gMult: 1, bMult: 1, saturation: 1, warmth: 0,
+        vignetteIntensity: 0,
+        toneCurve: { r: IDENTITY_CURVE, g: IDENTITY_CURVE, b: IDENTITY_CURVE },
+        grainIntensity: 0, grainSize: 1, sharpenAmount: 0,
+      },
+      __test_curve: {
+        id: '__test_curve',
+        rMult: 1, gMult: 1, bMult: 1, saturation: 1, warmth: 0,
+        vignetteIntensity: 0,
+        toneCurve: {
+          r: [[0,22],[64,73],[128,131],[192,189],[255,236]],
+          g: [[0,18],[64,70],[128,128],[192,186],[255,232]],
+          b: [[0,24],[64,74],[128,133],[192,191],[255,238]],
+        },
+        grainIntensity: 0, grainSize: 1, sharpenAmount: 0,
+      },
+      __test_color: {
+        id: '__test_color',
+        rMult: 0.97, gMult: 0.95, bMult: 1.02, saturation: 0.82, warmth: -0.005,
+        vignetteIntensity: 0,
+        toneCurve: { r: IDENTITY_CURVE, g: IDENTITY_CURVE, b: IDENTITY_CURVE },
+        grainIntensity: 0, grainSize: 1, sharpenAmount: 0,
+      },
+      __test_vignette: {
+        id: '__test_vignette',
+        rMult: 1, gMult: 1, bMult: 1, saturation: 1, warmth: 0,
+        vignetteIntensity: 0.6,
+        toneCurve: { r: IDENTITY_CURVE, g: IDENTITY_CURVE, b: IDENTITY_CURVE },
+        grainIntensity: 0, grainSize: 1, sharpenAmount: 0,
+      },
+      __test_grain: {
+        id: '__test_grain',
+        rMult: 1, gMult: 1, bMult: 1, saturation: 1, warmth: 0,
+        vignetteIntensity: 0,
+        toneCurve: { r: IDENTITY_CURVE, g: IDENTITY_CURVE, b: IDENTITY_CURVE },
+        grainIntensity: 0.05, grainSize: 1.2, sharpenAmount: 0,
+      },
+    };
+
+    const presetCache = {};
+    async function loadPreset(id) {
+      if (id in DEBUG_PRESETS) return DEBUG_PRESETS[id];
+      if (!presetCache[id]) {
+        const res = await fetch(`/src/presets/${id}.json`);
+        presetCache[id] = await res.json();
+      }
+      return presetCache[id];
+    }
+
+    // ── DOM refs ──────────────────────────────────────────────────────────────
+    const fileInput     = document.getElementById('fileInput');
+    const presetSelect  = document.getElementById('presetSelect');
+    const origCanvas    = document.getElementById('origCanvas');
+    const webglCanvas   = document.getElementById('webglCanvas');
+    const canvasCanvas  = document.getElementById('canvasCanvas');
+    const verdictEl     = document.getElementById('verdict');
+    const statsEl       = document.getElementById('stats');
+    const statusEl      = document.getElementById('status');
+    const errorEl       = document.getElementById('error');
+    const statMaxDiff   = document.getElementById('statMaxDiff');
+    const statAvgDiff   = document.getElementById('statAvgDiff');
+    const statWebGLTime = document.getElementById('statWebGLTime');
+    const statCanvasTime= document.getElementById('statCanvasTime');
+
+    const MAX_DIM = 1024;
+
+    let currentImageData = null;
+    let renderer = null;
+
+    // Lazy-init the WebGL renderer (singleton)
+    function getRenderer() {
+      if (!renderer) {
+        try {
+          renderer = new WebGLRenderer();
+        } catch (err) {
+          throw new Error(`WebGL2 not available: ${err.message}`);
+        }
+      }
+      return renderer;
+    }
+
+    function putImageData(canvas, imageData) {
+      canvas.width  = imageData.width;
+      canvas.height = imageData.height;
+      canvas.getContext('2d').putImageData(imageData, 0, 0);
+    }
+
+    function comparePixels(a, b) {
+      let maxDiff = 0;
+      let totalDiff = 0;
+      const len = a.data.length;
+      // Compare RGB only (skip alpha)
+      for (let i = 0; i < len; i += 4) {
+        for (let c = 0; c < 3; c++) {
+          const d = Math.abs(a.data[i + c] - b.data[i + c]);
+          if (d > maxDiff) maxDiff = d;
+          totalDiff += d;
+        }
+      }
+      const pixelCount = (len / 4) * 3;
+      const avgDiff = totalDiff / pixelCount;
+      return { maxDiff, avgDiff };
+    }
+
+    async function run() {
+      if (!currentImageData) return;
+      errorEl.textContent = '';
+      statusEl.textContent = 'Processing…';
+      verdictEl.style.display = 'none';
+      statsEl.style.display = 'none';
+
+      try {
+        const preset = await loadPreset(presetSelect.value);
+
+        // Clone for each pipeline so neither mutates the other's input
+        const cloneForWebGL = new ImageData(
+          new Uint8ClampedArray(currentImageData.data),
+          currentImageData.width,
+          currentImageData.height
+        );
+        const cloneForCanvas = new ImageData(
+          new Uint8ClampedArray(currentImageData.data),
+          currentImageData.width,
+          currentImageData.height
+        );
+
+        // ── WebGL pass ──────────────────────────────────────────────────────
+        const gl = getRenderer();
+        const t0 = performance.now();
+        const webglResult = gl.process(cloneForWebGL, preset, { mode: 'preview' });
+        const webglMs = (performance.now() - t0).toFixed(1);
+
+        // ── Canvas pass ─────────────────────────────────────────────────────
+        const t1 = performance.now();
+        const canvasResult = processCanvas(cloneForCanvas, preset, { mode: 'preview' });
+        const canvasMs = (performance.now() - t1).toFixed(1);
+
+        // ── Render to canvases ──────────────────────────────────────────────
+        putImageData(webglCanvas, webglResult);
+        putImageData(canvasCanvas, canvasResult);
+
+        // ── Compare ─────────────────────────────────────────────────────────
+        const { maxDiff, avgDiff } = comparePixels(webglResult, canvasResult);
+
+        statMaxDiff.textContent    = `${maxDiff}/255`;
+        statAvgDiff.textContent    = `${avgDiff.toFixed(2)}/255`;
+        statWebGLTime.textContent  = `${webglMs}ms`;
+        statCanvasTime.textContent = `${canvasMs}ms`;
+        statsEl.style.display = 'flex';
+
+        if (maxDiff <= 3) {
+          verdictEl.textContent = `✓ PARITY OK — max diff ${maxDiff}/255`;
+          verdictEl.className = 'verdict ok';
+        } else {
+          verdictEl.textContent = `✗ OUTPUT MISMATCH — shader may have a bug (max diff ${maxDiff}/255)`;
+          verdictEl.className = 'verdict fail';
+        }
+        verdictEl.style.display = 'block';
+
+        statusEl.textContent = `Preset: ${preset.id ?? presetSelect.value}`;
+      } catch (err) {
+        errorEl.textContent = `Error: ${err.message}`;
+        statusEl.textContent = '';
+        console.error(err);
+      }
+    }
+
+    // ── File input ────────────────────────────────────────────────────────────
+    fileInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+
+        let w = img.naturalWidth;
+        let h = img.naturalHeight;
+        if (w > MAX_DIM || h > MAX_DIM) {
+          const scale = MAX_DIM / Math.max(w, h);
+          w = Math.round(w * scale);
+          h = Math.round(h * scale);
+        }
+
+        origCanvas.width  = w;
+        origCanvas.height = h;
+        origCanvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        currentImageData = origCanvas.getContext('2d').getImageData(0, 0, w, h);
+
+        run();
+      };
+
+      img.onerror = () => {
+        errorEl.textContent = 'Failed to load image.';
+        URL.revokeObjectURL(url);
+      };
+
+      img.src = url;
+    });
+
+    presetSelect.addEventListener('change', run);
+
+    // ── WebGL init check (runs immediately on page load) ──────────────────────
+    try {
+      const testRenderer = new WebGLRenderer();
+      renderer = testRenderer;
+      statusEl.textContent = `WebGL2 ready — ${testRenderer.gl.getParameter(testRenderer.gl.RENDERER)}`;
+      statusEl.style.color = '#86efac';
+    } catch (err) {
+      statusEl.textContent = `WebGL2 FAILED: ${err.message} — Canvas fallback will be used for both paths`;
+      statusEl.style.color = '#fca5a5';
+      console.error('[WebGL init]', err);
+    }
+  </script>
+</body>
+</html>

@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
+import { processImage, isWebGLActive } from '../pipeline/index.js';
 
 function getMaxCachedPresets() {
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
@@ -26,12 +27,17 @@ function getProcessingOrder(presets, activeIndex) {
 
 /**
  * Manages a cache of processed preview ImageData for all presets.
- * Processes presets sequentially through the Web Worker (not main thread).
+ *
+ * When WebGL is available: processes directly on the main thread (~5-30ms
+ * per preset, all 8 complete in <250ms — no jank).
+ *
+ * When WebGL is not available: falls back to the worker bridge for
+ * Canvas API processing to keep the main thread free.
  *
  * @param {object[]} presets
  * @param {string} activePresetId
  * @param {ImageData|null} previewImageData
- * @param {object|null} workerBridge — { process, terminate } from createPipelineWorker
+ * @param {object|null} workerBridge — { process, terminate } (used only for Canvas fallback)
  */
 export function usePresetCache(presets, activePresetId, previewImageData, workerBridge) {
   const [cache, setCache] = useState(new Map());
@@ -53,7 +59,9 @@ export function usePresetCache(presets, activePresetId, previewImageData, worker
   }, [previewImageData]);
 
   const startBackgroundProcessing = useCallback(async (activeResult) => {
-    if (!previewImageData || !workerBridge) return;
+    if (!previewImageData) return;
+    // Canvas fallback still needs the worker bridge
+    if (!isWebGLActive() && !workerBridge) return;
 
     const thisRun = ++cancelRef.current;
     pauseRef.current = false;
@@ -65,7 +73,6 @@ export function usePresetCache(presets, activePresetId, previewImageData, worker
     const activeIndex = presets.findIndex(p => p.id === activePresetId);
     const ordered = getProcessingOrder(presets, activeIndex);
     const maxCached = getMaxCachedPresets();
-    // -1 because active is already cached
     const presetsToProcess = ordered.slice(0, maxCached - 1);
 
     const total = presetsToProcess.length;
@@ -86,12 +93,14 @@ export function usePresetCache(presets, activePresetId, previewImageData, worker
         continue;
       }
 
-      // Wait while paused (user tapped a preset — let worker finish that first)
-      while (pauseRef.current) {
-        await new Promise(r => setTimeout(r, 50));
-        if (cancelRef.current !== thisRun) {
-          setIsProcessing(false);
-          return;
+      // Canvas fallback: respect pause (let user-triggered work go first)
+      if (!isWebGLActive()) {
+        while (pauseRef.current) {
+          await new Promise(r => setTimeout(r, 50));
+          if (cancelRef.current !== thisRun) {
+            setIsProcessing(false);
+            return;
+          }
         }
       }
 
@@ -102,8 +111,14 @@ export function usePresetCache(presets, activePresetId, previewImageData, worker
           previewImageData.height
         );
 
-        // Process in Web Worker — main thread stays free
-        const result = await workerBridge.process(clone, preset, 'preview');
+        let result;
+        if (isWebGLActive()) {
+          // WebGL: ~5-30ms on main thread — no jank
+          result = processImage(clone, preset, { mode: 'preview' });
+        } else {
+          // Canvas fallback: use worker to keep main thread free
+          result = await workerBridge.process(clone, preset, 'preview');
+        }
 
         if (cancelRef.current !== thisRun) {
           setIsProcessing(false);
@@ -121,8 +136,8 @@ export function usePresetCache(presets, activePresetId, previewImageData, worker
       completed++;
       setProgress({ completed, total });
 
-      // Small yield to let React render the updated dot indicators
-      await new Promise(r => setTimeout(r, 16));
+      // Yield so React can render the updated dot indicator
+      await new Promise(r => requestAnimationFrame(r));
     }
 
     setIsProcessing(false);

@@ -24,11 +24,8 @@ export function applyVignette(imageData, preset) {
   const outerR  = longer  * 0.75;
   const range   = outerR - innerR;
 
-  // Max falloff at corners capped to 0.25
-  const cornerDist = Math.sqrt(cx * cx + cy * cy);
-  const rawCorner  = Math.min(1, Math.max(0, (cornerDist - innerR) / range));
-  const capScale   = rawCorner > 0 ? 0.25 / rawCorner : 1;
-  const effectiveIntensity = intensity * Math.min(1, capScale);
+  // Max falloff at corners — no cap, preset value is the limit
+  const effectiveIntensity = intensity;
 
   const d = imageData.data;
 
