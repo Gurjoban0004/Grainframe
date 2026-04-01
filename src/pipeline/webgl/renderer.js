@@ -47,9 +47,10 @@ export class WebGLRenderer {
     this.uniforms = {
       color: getUniformLocations(gl, this.programs.color, [
         'u_image', 'u_lutR', 'u_lutG', 'u_lutB', 'u_grain',
-        'u_saturation', 'u_rMult', 'u_gMult', 'u_bMult', 'u_warmth', 'u_greenShift',
+        'u_exposure', 'u_highlights', 'u_shadows', 'u_brightness', 'u_contrast', 'u_blackPoint', 'u_whitePoint',
+        'u_saturation', 'u_vibrance', 'u_rMult', 'u_gMult', 'u_bMult', 'u_warmth', 'u_greenShift',
         'u_vignetteIntensity', 'u_grainIntensity', 'u_grainSize',
-        'u_grainOffset', 'u_resolution',
+        'u_grainOffset', 'u_resolution', 'u_hasSelectiveColor', 'u_selectiveColor'
       ]),
 
       blur: getUniformLocations(gl, this.programs.blur, [
@@ -95,25 +96,48 @@ export class WebGLRenderer {
     this._updateLUTs(preset);
 
     const fbA = this._getFramebuffer('A', width, height);
-    const fbB = this._getFramebuffer('B', width, height);
 
     // Pass 1: Main color pass → fbA
     this._renderColorPass(sourceTexture, fbA, preset, width, height, options);
 
+    const clarifyAmount = preset.clarity ?? 0;
     const sharpenAmount = preset.sharpenAmount ?? 0;
+    
+    let currentOriginal = fbA;
+    
+    if (Math.abs(clarifyAmount) > 0.005) {
+      const qScale = 0.25;
+      const qWidth = Math.max(1, Math.round(width * qScale));
+      const qHeight = Math.max(1, Math.round(height * qScale));
+      const blurRadius = 50 * qScale; 
+      
+      const fbQ1 = this._getFramebuffer('Q1', qWidth, qHeight);
+      const fbQ2 = this._getFramebuffer('Q2', qWidth, qHeight);
+      const fbNew = this._getFramebuffer('Clarity', width, height);
+      
+      // Step to stretch the 9-tap blur across the radius
+      const step = blurRadius / 4.0;
+      
+      this._renderBlurPass(currentOriginal.texture, fbQ1, qWidth, qHeight, true, step);
+      this._renderBlurPass(fbQ1.texture, fbQ2, qWidth, qHeight, false, step);
+      
+      this._renderSharpenPass(currentOriginal.texture, fbQ2.texture, fbNew, clarifyAmount);
+      currentOriginal = fbNew;
+    }
 
     if (sharpenAmount > 0.001) {
+      const fbB = this._getFramebuffer('B', width, height);
       const fbC = this._getFramebuffer('C', width, height);
 
-      // Pass 2: H-blur fbA → fbB
-      this._renderBlurPass(fbA.texture, fbB, width, height, true);
+      // Pass 2: H-blur currentOriginal → fbB
+      this._renderBlurPass(currentOriginal.texture, fbB, width, height, true, 1.0);
       // Pass 3: V-blur fbB → fbC
-      this._renderBlurPass(fbB.texture, fbC, width, height, false);
-      // Pass 4: Sharpen fbA + fbC → screen
-      this._renderSharpenPass(fbA.texture, fbC.texture, null, sharpenAmount);
+      this._renderBlurPass(fbB.texture, fbC, width, height, false, 1.0);
+      // Pass 4: Sharpen currentOriginal + fbC → screen
+      this._renderSharpenPass(currentOriginal.texture, fbC.texture, null, sharpenAmount);
     } else {
-      // No sharpen — blit fbA to screen
-      this._renderToScreen(fbA.texture);
+      // No sharpen — blit currentOriginal to screen
+      this._renderToScreen(currentOriginal.texture);
     }
 
     const output = this._readPixels(width, height);
@@ -289,14 +313,41 @@ export class WebGLRenderer {
     gl.bindTexture(gl.TEXTURE_2D, this.grainTexture);
     gl.uniform1i(u.u_grain, 4);
 
-    // Flat preset fields — matches actual JSON structure
+    gl.uniform1f(u.u_exposure, preset.tonal?.exposure ?? 0.0);
+    gl.uniform1f(u.u_highlights, preset.tonal?.highlights ?? 0.0);
+    gl.uniform1f(u.u_shadows, preset.tonal?.shadows ?? 0.0);
+    gl.uniform1f(u.u_brightness, preset.tonal?.brightness ?? 0.0);
+    gl.uniform1f(u.u_contrast, preset.tonal?.contrast ?? 0.0);
+    gl.uniform1f(u.u_blackPoint, preset.tonal?.blackPoint ?? 0.0);
+    gl.uniform1f(u.u_whitePoint, preset.tonal?.whitePoint ?? 1.0);
+
     gl.uniform1f(u.u_saturation, preset.saturation ?? 1.0);
+    gl.uniform1f(u.u_vibrance, preset.vibrance ?? 0.0);
     gl.uniform1f(u.u_rMult, preset.rMult ?? 1.0);
     gl.uniform1f(u.u_gMult, preset.gMult ?? 1.0);
     gl.uniform1f(u.u_bMult, preset.bMult ?? 1.0);
     gl.uniform1f(u.u_warmth, preset.warmth ?? 0.0);
     gl.uniform1f(u.u_greenShift, preset.greenShift ?? 0.0);
     gl.uniform1f(u.u_vignetteIntensity, preset.vignetteIntensity ?? 0.0);
+
+    const sc = preset.selectiveColor || {};
+    const scData = new Float32Array(24);
+    const zones = ['red', 'orange', 'yellow', 'green', 'cyan', 'blue', 'purple', 'magenta'];
+    
+    let hasSC = false;
+    for (let i = 0; i < 8; i++) {
+      const adj = sc[zones[i]];
+      if (adj) {
+        scData[i * 3 + 0] = adj.hueShift || 0;
+        scData[i * 3 + 1] = adj.satShift || 0;
+        scData[i * 3 + 2] = adj.lumShift || 0;
+        if (Math.abs(scData[i*3]) > 0.1 || Math.abs(scData[i*3+1]) > 0.005 || Math.abs(scData[i*3+2]) > 0.005) {
+          hasSC = true;
+        }
+      }
+    }
+    gl.uniform3fv(u.u_selectiveColor, scData);
+    gl.uniform1i(u.u_hasSelectiveColor, hasSC ? 1 : 0);
 
     let grainIntensity = preset.grainIntensity ?? 0.0;
     let grainSize = preset.grainSize ?? 1.0;
@@ -315,7 +366,7 @@ export class WebGLRenderer {
     gl.bindVertexArray(null);
   }
 
-  _renderBlurPass(sourceTexture, targetFB, width, height, horizontal) {
+  _renderBlurPass(sourceTexture, targetFB, width, height, horizontal, radius = 1.0) {
     const gl = this.gl;
     const program = this.programs.blur;
     const u = this.uniforms.blur;
@@ -328,7 +379,7 @@ export class WebGLRenderer {
     gl.bindTexture(gl.TEXTURE_2D, sourceTexture);
     gl.uniform1i(u.u_image, 0);
     gl.uniform2f(u.u_resolution, width, height);
-    gl.uniform2f(u.u_direction, horizontal ? 1.0 : 0.0, horizontal ? 0.0 : 1.0);
+    gl.uniform2f(u.u_direction, horizontal ? radius : 0.0, horizontal ? 0.0 : radius);
 
     gl.bindVertexArray(this.quadVAO);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);

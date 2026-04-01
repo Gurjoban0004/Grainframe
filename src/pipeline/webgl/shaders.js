@@ -35,13 +35,28 @@ uniform sampler2D u_lutG;
 uniform sampler2D u_lutB;
 uniform sampler2D u_grain;
 
+// Tonal Decomposition
+uniform float u_exposure;
+uniform float u_highlights;
+uniform float u_shadows;
+uniform float u_brightness;
+uniform float u_contrast;
+uniform float u_blackPoint;
+uniform float u_whitePoint;
+
 // Color adjust (flat preset fields)
 uniform float u_saturation;      // preset.saturation
+uniform float u_vibrance;        // preset.vibrance
 uniform float u_rMult;           // preset.rMult
 uniform float u_gMult;           // preset.gMult
 uniform float u_bMult;           // preset.bMult
 uniform float u_warmth;          // preset.warmth
 uniform float u_greenShift;      // preset.greenShift
+
+uniform int u_hasSelectiveColor;
+uniform vec3 u_selectiveColor[8];
+
+
 
 // Vignette
 uniform float u_vignetteIntensity; // preset.vignetteIntensity
@@ -52,11 +67,30 @@ uniform float u_grainSize;       // preset.grainSize
 uniform vec2  u_grainOffset;
 uniform vec2  u_resolution;
 
-// sRGB → linear light (matches colorspace.js srgbToLinearLUT)
 vec3 srgbToLinear(vec3 c) {
   vec3 lo = c / 12.92;
   vec3 hi = pow((c + 0.055) / 1.055, vec3(2.4));
   return mix(lo, hi, step(vec3(0.04045), c));
+}
+
+vec2 getZoneParams(int i) {
+    if (i == 0) return vec2(0.0, 30.0);
+    if (i == 1) return vec2(35.0, 20.0);
+    if (i == 2) return vec2(60.0, 22.0);
+    if (i == 3) return vec2(120.0, 45.0);
+    if (i == 4) return vec2(180.0, 22.0);
+    if (i == 5) return vec2(230.0, 35.0);
+    if (i == 6) return vec2(280.0, 30.0);
+    return vec2(330.0, 22.0);
+}
+
+float zoneWeight(float hue, vec2 params) {
+    float center = params.x;
+    float halfWidth = params.y;
+    float dist = abs(hue - center);
+    if (dist > 180.0) dist = 360.0 - dist;
+    if (dist >= halfWidth) return 0.0;
+    return (cos((dist / halfWidth) * 3.14159265359) + 1.0) * 0.5;
 }
 
 // linear light → sRGB (matches colorspace.js linearToSrgbLUT)
@@ -118,6 +152,68 @@ void main() {
   // === STAGE 1 (applyColor): linear light color transform ===
   vec3 lin = srgbToLinear(rgb);
 
+  // === Tonal Decomposition ===
+  // 1. Exposure
+  if (abs(u_exposure) > 0.01) {
+    float gain = pow(2.0, u_exposure);
+    lin = lin * gain;
+    // Soft highlight rolloff - compress overexposed values toward 1.0
+    // For values <= 1.0, leave as-is. For values > 1.0, apply shoulder.
+    vec3 over = max(vec3(0.0), lin - vec3(1.0));
+    vec3 shoulder = 1.0 - 0.3 * exp(-over * 2.0);
+    // Only apply shoulder where lin > 1.0
+    lin = mix(lin, shoulder, step(vec3(1.0), lin));
+  }
+  
+  // 2. Black point
+  if (u_blackPoint > 0.005) {
+    lin = u_blackPoint + lin * (1.0 - u_blackPoint);
+  }
+  
+  // 3. White point
+  if (u_whitePoint < 0.995) {
+    lin = lin * u_whitePoint;
+  }
+  
+  // 4. Highlights
+  if (abs(u_highlights) > 0.01) {
+    vec3 hw = smoothstep(0.3, 0.7, lin);
+    if (u_highlights < 0.0) {
+      lin = lin - hw * abs(u_highlights) * (lin - 0.5) * 0.8;
+    } else {
+      lin = lin + hw * u_highlights * (1.0 - lin) * 0.6;
+    }
+  }
+  
+  // 5. Shadows
+  if (abs(u_shadows) > 0.01) {
+    vec3 sw = 1.0 - smoothstep(0.3, 0.7, lin);
+    if (u_shadows > 0.0) {
+      lin = lin + sw * u_shadows * (0.5 - lin) * 0.8;
+    } else {
+      lin = lin + sw * u_shadows * lin * 0.6;
+    }
+  }
+  
+  // 6. Brightness
+  if (abs(u_brightness) > 0.01) {
+    vec3 midW = exp(-pow((lin - 0.5) / 0.3, vec3(2.0)));
+    lin = lin + u_brightness * midW * 0.3;
+  }
+  
+  // 7. Contrast
+  if (abs(u_contrast) > 0.01) {
+    vec3 centered = lin - 0.5;
+    if (u_contrast > 0.0) {
+      float k = 1.0 + u_contrast * 3.0;
+      lin = 0.5 + centered * k / (1.0 + abs(centered) * (k - 1.0) * 2.0);
+    } else {
+      lin = 0.5 + centered * (1.0 + u_contrast * 0.8);
+    }
+  }
+  
+  lin = clamp(lin, 0.0, 1.0);
+
   // Channel multipliers (same order as color.js)
   lin *= vec3(u_rMult, u_gMult, u_bMult);
 
@@ -125,6 +221,88 @@ void main() {
   vec3 hsl = rgbToHsl(lin);
   hsl.y = clamp(hsl.y * u_saturation, 0.0, 1.0);
   lin = hslToRgb(hsl);
+
+  // === Vibrance ===
+  if (abs(u_vibrance) > 0.001) {
+    float lum = dot(lin, vec3(0.2126, 0.7152, 0.0722));
+    float maxC = max(lin.r, max(lin.g, lin.b));
+    float minC = min(lin.r, min(lin.g, lin.b));
+    float chroma = maxC - minC;
+    float sat = maxC > 0.001 ? chroma / maxC : 0.0;
+    
+    float weight = 1.0 - sat;
+    weight = weight * weight;
+    
+    if (chroma > 0.01) {
+      float h;
+      if (maxC == lin.r) {
+        // mod in GLSL is (x - y * floor(x/y)), which behaves well for positive. 
+        // to handle negative like JS % 6 correctly we can add 6 then mod 6
+        float temp = (lin.g - lin.b) / chroma;
+        h = mod(mod(temp, 6.0) + 6.0, 6.0);
+      } else if (maxC == lin.g) {
+        h = (lin.b - lin.r) / chroma + 2.0;
+      } else {
+        h = (lin.r - lin.g) / chroma + 4.0;
+      }
+      h *= 60.0;
+      if (h < 0.0) h += 360.0;
+      
+      if (h > 10.0 && h < 55.0 && sat > 0.1 && sat < 0.65) {
+        float skinCenter = 28.0;
+        float skinWidth = 18.0;
+        float dist = abs(h - skinCenter) / skinWidth;
+        float skinFactor = max(0.0, 1.0 - dist * dist);
+        weight *= (1.0 - skinFactor * 0.5);
+      }
+    }
+    
+    float amount = u_vibrance * weight;
+    float scale = 1.0 + amount;
+    
+    lin = lum + (lin - lum) * scale;
+  }
+
+  // === Selective Color ===
+  if (u_hasSelectiveColor > 0) {
+    vec3 hslSC = rgbToHsl(lin);
+    float hSC = hslSC.x;
+    float sSC = hslSC.y;
+    float lSC = hslSC.z;
+    
+    // Only apply if chromatic
+    if (sSC > 0.001) {
+        float totalHueShift = 0.0;
+        float totalSatMult = 1.0;
+        float totalLumShift = 0.0;
+        float totalWeight = 0.0;
+        
+        for (int i = 0; i < 8; i++) {
+            vec2 params = getZoneParams(i);
+            float w = zoneWeight(hSC, params);
+            if (w > 0.001) {
+                totalWeight += w;
+                vec3 adj = u_selectiveColor[i];
+                totalHueShift += adj.x * w;
+                totalSatMult += adj.y * w;
+                totalLumShift += adj.z * w;
+            }
+        }
+        
+        if (totalWeight > 0.001) {
+            float newH = hSC + totalHueShift;
+            float newS = sSC * max(0.0, totalSatMult);
+            float newL = lSC + totalLumShift;
+            
+            newH = mod(mod(newH, 360.0) + 360.0, 360.0);
+            newS = clamp(newS, 0.0, 1.0);
+            newL = clamp(newL, 0.0, 1.0);
+            
+            lin = hslToRgb(vec3(newH, newS, newL));
+        }
+    }
+  }
+
 
   // Warmth (matches color.js: r += warmth, b -= warmth, in linear)
   lin.r += u_warmth;

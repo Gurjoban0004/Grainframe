@@ -5,7 +5,11 @@ import { WebGLRenderer } from './webgl/renderer.js';
 
 // Canvas API pipeline imports (fallback path — unchanged)
 import { applyColor }      from './color.js';
+import { applyTonalAdjustments } from './tonal.js';
 import { applyVignette }   from './vignette.js';
+import { applyVibrance }   from './vibrance.js';
+import { applySelectiveColor } from './selective-color.js';
+import { applyClarity }    from './clarity.js';
 import { buildToneCurveLUTs, applyToneCurve } from './tonecurve.js';
 import { applyGrain }      from './grain.js';
 import { applySharpen }    from './sharpen.js';
@@ -57,11 +61,28 @@ function processImageCanvas(imageData, preset, options = {}) {
   const data = new Uint8ClampedArray(imageData.data);
   const out  = new ImageData(data, imageData.width, imageData.height);
 
+  if (preset.tonal) {
+    applyTonalAdjustments(out, preset.tonal);
+  }
+
   applyColor(out, preset);
+  
+  if (preset.vibrance !== undefined && Math.abs(preset.vibrance) > 0.001) {
+    applyVibrance(out, preset.vibrance);
+  }
+
+  if (preset.selectiveColor) {
+    applySelectiveColor(out, preset.selectiveColor);
+  }
+
   applyVignette(out, preset);
 
   const luts = buildToneCurveLUTs(preset);
   applyToneCurve(out, luts);
+  
+  if (preset.clarity !== undefined && Math.abs(preset.clarity) > 0.005) {
+    applyClarity(out, preset.clarity, 50);
+  }
 
   applyGrain(out, preset, options);
   applySharpen(out, preset);
@@ -71,28 +92,65 @@ function processImageCanvas(imageData, preset, options = {}) {
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
-/**
- * Process an ImageData through the full Grainframe pipeline.
- * Uses WebGL when available; falls back to Canvas API automatically.
- *
- * Signature is identical to the previous Canvas-only version so all
- * callers (useImagePipeline, usePresetCache, worker, export) work unchanged.
- *
- * @param {ImageData} imageData  Source pixels
- * @param {object}    preset     Preset configuration object
- * @param {object}    [options]  { mode: 'preview'|'export', previewWidth, exportWidth }
- * @returns {ImageData}
- */
-/**
- * Process an ImageData through the full Grainframe pipeline.
- * Uses WebGL when available; falls back to Canvas API automatically.
- *
- * @param {ImageData} imageData  Source pixels
- * @param {object}    preset     Preset configuration object
- * @param {object}    [options]  { mode, previewWidth, exportWidth, forceCanvas }
- * @returns {ImageData}
- */
+// ─── Preset Sanitization ──────────────────────────────────────────────────────
+
+export const PARAM_RANGES = {
+  exposure:          { min: -3.0,  max: 3.0,  default: 0    },
+  highlights:        { min: -1.0,  max: 1.0,  default: 0    },
+  shadows:           { min: -1.0,  max: 1.0,  default: 0    },
+  brightness:        { min: -1.0,  max: 1.0,  default: 0    },
+  contrast:          { min: -1.0,  max: 1.0,  default: 0    },
+  blackPoint:        { min: 0,     max: 0.3,  default: 0    },
+  whitePoint:        { min: 0.7,   max: 1.0,  default: 1.0  },
+  saturation:        { min: 0.0,   max: 2.0,  default: 1.0  },
+  vibrance:          { min: -1.0,  max: 1.0,  default: 0    },
+  rMult:             { min: 0.5,   max: 1.5,  default: 1.0  },
+  gMult:             { min: 0.5,   max: 1.5,  default: 1.0  },
+  bMult:             { min: 0.5,   max: 1.5,  default: 1.0  },
+  warmth:            { min: -0.1,  max: 0.1,  default: 0    },
+  greenShift:        { min: -0.05, max: 0.05, default: 0    },
+  hueShift:          { min: -30,   max: 30,   default: 0    },
+  satShift:          { min: -1.0,  max: 1.0,  default: 0    },
+  lumShift:          { min: -0.5,  max: 0.5,  default: 0    },
+  clarity:           { min: -1.0,  max: 1.0,  default: 0    },
+  grainIntensity:    { min: 0,     max: 1.0,  default: 0    },
+  grainSize:         { min: 0.5,   max: 3.0,  default: 1.0  },
+  vignetteIntensity: { min: 0,     max: 0.8,  default: 0    },
+  sharpenAmount:     { min: 0,     max: 0.5,  default: 0.15 },
+};
+
+export function clampParam(name, value) {
+  const range = PARAM_RANGES[name];
+  if (!range) return value;
+  return Math.max(range.min, Math.min(range.max, value));
+}
+
+export function sanitizePreset(preset) {
+  const clean = { ...preset };
+  if (clean.tonal) {
+    clean.tonal = { ...clean.tonal };
+    for (const key of ['exposure', 'highlights', 'shadows', 'brightness', 'contrast', 'blackPoint', 'whitePoint']) {
+      if (clean.tonal[key] !== undefined) clean.tonal[key] = clampParam(key, clean.tonal[key]);
+    }
+  }
+  for (const key of ['saturation', 'vibrance', 'rMult', 'gMult', 'bMult', 'warmth', 'greenShift', 'clarity', 'grainIntensity', 'grainSize', 'vignetteIntensity', 'sharpenAmount']) {
+    if (clean[key] !== undefined) clean[key] = clampParam(key, clean[key]);
+  }
+  if (clean.selectiveColor) {
+    clean.selectiveColor = { ...clean.selectiveColor };
+    for (const zone of Object.keys(clean.selectiveColor)) {
+      const z = { ...clean.selectiveColor[zone] };
+      z.hueShift = clampParam('hueShift', z.hueShift || 0);
+      z.satShift = clampParam('satShift', z.satShift || 0);
+      z.lumShift = clampParam('lumShift', z.lumShift || 0);
+      clean.selectiveColor[zone] = z;
+    }
+  }
+  return clean;
+}
+
 export function processImage(imageData, preset, options = {}) {
+  preset = sanitizePreset(preset);
   if (!options.forceCanvas) {
     const renderer = getRenderer();
 
