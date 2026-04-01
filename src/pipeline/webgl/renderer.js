@@ -46,7 +46,7 @@ export class WebGLRenderer {
 
     this.uniforms = {
       color: getUniformLocations(gl, this.programs.color, [
-        'u_image', 'u_lutR', 'u_lutG', 'u_lutB', 'u_grain',
+        'u_image', 'u_lutR', 'u_lutG', 'u_lutB', 'u_grain', 'u_skinMask', 'u_hasSkinMask',
         'u_exposure', 'u_highlights', 'u_shadows', 'u_brightness', 'u_contrast', 'u_blackPoint', 'u_whitePoint',
         'u_saturation', 'u_vibrance', 'u_rMult', 'u_gMult', 'u_bMult', 'u_warmth', 'u_greenShift',
         'u_vignetteIntensity', 'u_grainIntensity', 'u_grainSize',
@@ -57,7 +57,7 @@ export class WebGLRenderer {
         'u_image', 'u_resolution', 'u_direction',
       ]),
       sharpen: getUniformLocations(gl, this.programs.sharpen, [
-        'u_original', 'u_blurred', 'u_amount',
+        'u_original', 'u_blurred', 'u_amount', 'u_skinMask', 'u_hasSkinMask'
       ]),
       passthrough: getUniformLocations(gl, this.programs.passthrough, [
         'u_image',
@@ -94,11 +94,12 @@ export class WebGLRenderer {
 
     const sourceTexture = this._uploadImageData(imageData);
     this._updateLUTs(preset);
+    const skinMaskTexture = options.skinMask ? this._uploadSkinMask(options.skinMask, width, height) : null;
 
     const fbA = this._getFramebuffer('A', width, height);
 
     // Pass 1: Main color pass → fbA
-    this._renderColorPass(sourceTexture, fbA, preset, width, height, options);
+    this._renderColorPass(sourceTexture, skinMaskTexture, fbA, preset, width, height, options);
 
     const clarifyAmount = preset.clarity ?? 0;
     const sharpenAmount = preset.sharpenAmount ?? 0;
@@ -121,7 +122,7 @@ export class WebGLRenderer {
       this._renderBlurPass(currentOriginal.texture, fbQ1, qWidth, qHeight, true, step);
       this._renderBlurPass(fbQ1.texture, fbQ2, qWidth, qHeight, false, step);
       
-      this._renderSharpenPass(currentOriginal.texture, fbQ2.texture, fbNew, clarifyAmount);
+      this._renderSharpenPass(currentOriginal.texture, fbQ2.texture, skinMaskTexture, fbNew, clarifyAmount);
       currentOriginal = fbNew;
     }
 
@@ -134,7 +135,7 @@ export class WebGLRenderer {
       // Pass 3: V-blur fbB → fbC
       this._renderBlurPass(fbB.texture, fbC, width, height, false, 1.0);
       // Pass 4: Sharpen currentOriginal + fbC → screen
-      this._renderSharpenPass(currentOriginal.texture, fbC.texture, null, sharpenAmount);
+      this._renderSharpenPass(currentOriginal.texture, fbC.texture, skinMaskTexture, null, sharpenAmount);
     } else {
       // No sharpen — blit currentOriginal to screen
       this._renderToScreen(currentOriginal.texture);
@@ -146,6 +147,9 @@ export class WebGLRenderer {
     console.log('[WebGL] First pixel RGBA:', Array.from(output.data.subarray(0, 4)));
 
     gl.deleteTexture(sourceTexture);
+    if (skinMaskTexture) {
+      gl.deleteTexture(skinMaskTexture);
+    }
 
     return output;
   }
@@ -228,6 +232,33 @@ export class WebGLRenderer {
     return texture;
   }
 
+  _uploadSkinMask(maskArray, width, height) {
+    const gl = this.gl;
+    const texture = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+
+    // Convert Float32Array (0.0 - 1.0) to Uint8Array (0 - 255) for R8 texture
+    // This avoids needing OES_texture_float on older devices.
+    const u8 = new Uint8Array(maskArray.length);
+    for (let i = 0; i < maskArray.length; i++) {
+      u8[i] = Math.round(Math.min(1.0, Math.max(0.0, maskArray[i])) * 255);
+    }
+
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+    gl.texImage2D(
+      gl.TEXTURE_2D, 0, gl.R8,
+      width, height, 0,
+      gl.RED, gl.UNSIGNED_BYTE, u8
+    );
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    return texture;
+  }
+
   _updateLUTs(preset) {
     if (this.currentPresetId === preset.id) return;
 
@@ -284,7 +315,7 @@ export class WebGLRenderer {
     return this.framebuffers[name];
   }
 
-  _renderColorPass(sourceTexture, targetFB, preset, width, height, options) {
+  _renderColorPass(sourceTexture, skinMaskTexture, targetFB, preset, width, height, options) {
     const gl = this.gl;
     const program = this.programs.color;
     const u = this.uniforms.color;
@@ -312,6 +343,15 @@ export class WebGLRenderer {
     gl.activeTexture(gl.TEXTURE4);
     gl.bindTexture(gl.TEXTURE_2D, this.grainTexture);
     gl.uniform1i(u.u_grain, 4);
+
+    if (skinMaskTexture) {
+      gl.activeTexture(gl.TEXTURE5);
+      gl.bindTexture(gl.TEXTURE_2D, skinMaskTexture);
+      gl.uniform1i(u.u_skinMask, 5);
+      gl.uniform1i(u.u_hasSkinMask, 1);
+    } else {
+      gl.uniform1i(u.u_hasSkinMask, 0);
+    }
 
     gl.uniform1f(u.u_exposure, preset.tonal?.exposure ?? 0.0);
     gl.uniform1f(u.u_highlights, preset.tonal?.highlights ?? 0.0);
@@ -386,7 +426,7 @@ export class WebGLRenderer {
     gl.bindVertexArray(null);
   }
 
-  _renderSharpenPass(originalTexture, blurredTexture, targetFB, amount) {
+  _renderSharpenPass(originalTexture, blurredTexture, skinMaskTexture, targetFB, amount) {
     const gl = this.gl;
     const program = this.programs.sharpen;
     const u = this.uniforms.sharpen;
@@ -405,6 +445,15 @@ export class WebGLRenderer {
     gl.activeTexture(gl.TEXTURE1);
     gl.bindTexture(gl.TEXTURE_2D, blurredTexture);
     gl.uniform1i(u.u_blurred, 1);
+
+    if (skinMaskTexture) {
+      gl.activeTexture(gl.TEXTURE2);
+      gl.bindTexture(gl.TEXTURE_2D, skinMaskTexture);
+      gl.uniform1i(u.u_skinMask, 2);
+      gl.uniform1i(u.u_hasSkinMask, 1);
+    } else {
+      gl.uniform1i(u.u_hasSkinMask, 0);
+    }
 
     gl.uniform1f(u.u_amount, amount);
 

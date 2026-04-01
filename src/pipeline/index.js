@@ -61,31 +61,33 @@ function processImageCanvas(imageData, preset, options = {}) {
   const data = new Uint8ClampedArray(imageData.data);
   const out  = new ImageData(data, imageData.width, imageData.height);
 
+  // Note: skinMask is naturally passed through via options or as the 3rd arg
+
   if (preset.tonal) {
-    applyTonalAdjustments(out, preset.tonal);
+    applyTonalAdjustments(out, preset.tonal, options.skinMask);
   }
 
-  applyColor(out, preset);
+  applyColor(out, preset, options);
   
   if (preset.vibrance !== undefined && Math.abs(preset.vibrance) > 0.001) {
-    applyVibrance(out, preset.vibrance);
+    applyVibrance(out, preset.vibrance, options.skinMask);
   }
 
   if (preset.selectiveColor) {
-    applySelectiveColor(out, preset.selectiveColor);
+    applySelectiveColor(out, preset.selectiveColor, options.skinMask);
   }
 
-  applyVignette(out, preset);
+  applyVignette(out, preset); // Vignette doesn't need skin protection (spatial only)
 
   const luts = buildToneCurveLUTs(preset);
-  applyToneCurve(out, luts);
+  applyToneCurve(out, luts); // Tone curves apply to whole image (micro color shifts)
   
   if (preset.clarity !== undefined && Math.abs(preset.clarity) > 0.005) {
-    applyClarity(out, preset.clarity, 50);
+    applyClarity(out, preset.clarity, options.skinMask, 50);
   }
 
   applyGrain(out, preset, options);
-  applySharpen(out, preset);
+  applySharpen(out, preset, options);
 
   return out;
 }

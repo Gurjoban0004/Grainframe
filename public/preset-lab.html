@@ -119,6 +119,8 @@
 <div class="lab-header">
   <h1>Preset Lab</h1>
   <div class="header-actions">
+    <div class="face-status" id="faceStatus" style="font-size:11px;color:#888;display:flex;align-items:center;">Face Detector: Init...</div>
+    <button class="btn" id="btnSkinMap" style="background:rgba(201,169,110,0.08); display:none;" title="Show Skin Protection Mask">Skin Map</button>
     <select id="presetDropdown" class="btn" style="background:rgba(201,169,110,0.08);cursor:pointer;">
       <option value="">Load Preset ▼</option>
     </select>
@@ -356,6 +358,8 @@
 <script type="module">
   import { processImage } from '../src/pipeline/index.js';
   import { computeHistograms, drawHistogram, drawBlended, autoMatch, estimateGrain, detectVignette } from './auto-match.js';
+  import { initFaceDetection, detectFacesFromImageData } from '../src/pipeline/face-detect.js';
+  import { buildSkinMask } from '../src/pipeline/skin.js';
   import heic2any from 'https://esm.sh/heic2any@0.0.4';
   import classicChrome from '../src/presets/classic-chrome.json';
   import portra from '../src/presets/portra.json';
@@ -373,6 +377,8 @@
 
   // ─── State ────────────────────────────────────────────────────────────────────
   let sourceImageData = null;
+  let currentSkinMask = null;
+  let showSkinMask = false;
   let refImageData = null;
   let processedImageData = null;
   let showBefore = false;
@@ -1099,10 +1105,38 @@
     });
   }
 
+  // ─── Face Detection & Skin Mask ───────────────────────────────────────────────
+  async function rebuildSkinMaskData(imgData) {
+    const fs = document.getElementById('faceStatus');
+    fs.textContent = 'Detecting faces...';
+    try {
+      const faces = await detectFacesFromImageData(imgData);
+      currentSkinMask = buildSkinMask(imgData, faces);
+      fs.textContent = `Detector: \${faces.length} face(s)`;
+      document.getElementById('btnSkinMap').style.display = 'inline-block';
+    } catch (e) {
+      console.warn('Face detect error', e);
+      fs.textContent = 'Detector: fallback';
+      currentSkinMask = buildSkinMask(imgData, []);
+      document.getElementById('btnSkinMap').style.display = 'inline-block';
+    }
+  }
+
+  document.getElementById('btnSkinMap').addEventListener('click', (e) => {
+    showSkinMask = !showSkinMask;
+    e.target.style.background = showSkinMask ? 'rgba(201,169,110,0.3)' : 'rgba(201,169,110,0.08)';
+    updateMainCanvas();
+  });
+
   // ─── Init ─────────────────────────────────────────────────────────────────────
-  function init() {
+  async function init() {
     buildSidebar();
     updateUndoButtons();
+
+    // Start loading face detector in background
+    initFaceDetection().then(type => {
+      document.getElementById('faceStatus').textContent = `Detector: \${type} ready`;
+    });
 
     const curveCanvas = document.getElementById('curveCanvas');
     curveEditor = new CurveEditor(curveCanvas, 'r', onCurveChange);
@@ -1124,10 +1158,11 @@
     });
 
     // Source file
-    const handleSourceFile = file => loadImageFile(file, (imgData, w, h) => {
+    const handleSourceFile = file => loadImageFile(file, async (imgData, w, h) => {
       sourceImageData = imgData;
       document.getElementById('sourceDropZone').style.display = 'none';
       showCanvas('sourceCanvasWrap', sourceCanvas, w, h);
+      await rebuildSkinMaskData(imgData);
       runProcess();
     });
     document.getElementById('sourceFile').addEventListener('change', e => { if (e.target.files[0]) handleSourceFile(e.target.files[0]); });

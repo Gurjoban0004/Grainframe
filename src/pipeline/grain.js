@@ -4,6 +4,8 @@
 import { createCanvas, getContext } from './canvas-utils.js';
 import { gaussianBlur } from './blur.js';
 
+import { getAdjustmentScale } from './skin.js';
+
 // Mulberry32 — fast seeded PRNG
 function mulberry32(seed) {
   return function () {
@@ -18,7 +20,7 @@ function mulberry32(seed) {
  * Apply film grain to ImageData in-place (sRGB space).
  * @param {ImageData} imageData
  * @param {object} preset  { grainIntensity, grainSize, grainSeed }
- * @param {object} options { mode: 'preview'|'export', previewWidth, exportWidth }
+ * @param {object} options { mode: 'preview'|'export', previewWidth, exportWidth, skinMask }
  */
 export function applyGrain(imageData, preset, options = {}) {
   const intensity = Math.max(0, preset.grainIntensity ?? 0.02);
@@ -26,6 +28,7 @@ export function applyGrain(imageData, preset, options = {}) {
 
   const { width, height } = imageData;
   const seed = preset.grainSeed ?? 42;
+  const skinMask = options.skinMask || null;
 
   // Scale grain size for export vs preview
   const previewWidth  = options.previewWidth  ?? width;
@@ -67,6 +70,7 @@ export function applyGrain(imageData, preset, options = {}) {
   const isMonochrome = (preset.saturation ?? 1) < 0.05;
   const d = imageData.data;
   for (let i = 0; i < d.length; i += 4) {
+    const pixIdx = i / 4;
     const r = d[i], g = d[i + 1], b = d[i + 2];
 
     // Luminance (sRGB approximation)
@@ -74,19 +78,26 @@ export function applyGrain(imageData, preset, options = {}) {
     // Shadows get more grain: scale inversely with luminance
     const lumScale = 1 - lum * 0.7;
 
+    // Skin protection
+    const grainScale = skinMask && skinMask[pixIdx] > 0.01 
+      ? getAdjustmentScale(skinMask[pixIdx], 'grain') 
+      : 1.0;
+
     // Noise value centered at 0 (-0.5 to 0.5)
     const noise = (bd[i] / 255) - 0.5;
 
+    const effIntensity = intensity * grainScale;
+
     if (isMonochrome) {
       // Same grain on all channels — no colored speckles in B&W
-      const grainValue = noise * intensity * lumScale * 255;
+      const grainValue = noise * effIntensity * lumScale * 255;
       d[i]     = Math.min(255, Math.max(0, r + grainValue));
       d[i + 1] = Math.min(255, Math.max(0, g + grainValue));
       d[i + 2] = Math.min(255, Math.max(0, b + grainValue));
     } else {
-      const grainR = noise * intensity * lumScale * 1.1 * 255;
-      const grainG = noise * intensity * lumScale * 1.0 * 255;
-      const grainB = noise * intensity * lumScale * 1.1 * 255;
+      const grainR = noise * effIntensity * lumScale * 1.1 * 255;
+      const grainG = noise * effIntensity * lumScale * 1.0 * 255;
+      const grainB = noise * effIntensity * lumScale * 1.1 * 255;
 
       d[i]     = Math.min(255, Math.max(0, r + grainR));
       d[i + 1] = Math.min(255, Math.max(0, g + grainG));
@@ -94,3 +105,4 @@ export function applyGrain(imageData, preset, options = {}) {
     }
   }
 }
+

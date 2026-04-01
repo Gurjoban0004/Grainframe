@@ -2,6 +2,7 @@
 // No framework imports. Pure math only.
 
 import { srgbToLinearLUT, linearToSrgbLUT } from './colorspace.js';
+import { getAdjustmentScale } from './skin.js';
 
 function rgbToHsl(r, g, b) {
   const max = Math.max(r, g, b);
@@ -42,29 +43,72 @@ function hslToRgb(h, s, l) {
   ];
 }
 
-export function applyColor(imageData, preset) {
-  const { rMult = 1, gMult = 1, bMult = 1, saturation = 1, warmth = 0 } = preset;
+export function applyColor(imageData, preset, options = {}) {
+  const { rMult = 1, gMult = 1, bMult = 1, saturation = 1, warmth = 0, greenShift = 0 } = preset;
   const data = imageData.data;
   const len = data.length;
+  const skinMask = options.skinMask || null;
 
   for (let i = 0; i < len; i += 4) {
+    const pixIdx = i / 4;
+    const skinVal = skinMask ? skinMask[pixIdx] : 0;
+    
     let r = srgbToLinearLUT[data[i]];
     let g = srgbToLinearLUT[data[i + 1]];
     let b = srgbToLinearLUT[data[i + 2]];
 
-    r *= rMult;
-    g *= gMult;
-    b *= bMult;
+    // ── Multipliers ──
+    const colorScale = skinVal > 0.01 ? getAdjustmentScale(skinVal, 'saturation') : 1.0;
+    const effR = 1.0 + (rMult - 1.0) * colorScale;
+    const effG = 1.0 + (gMult - 1.0) * colorScale;
+    const effB = 1.0 + (bMult - 1.0) * colorScale;
+
+    r *= effR;
+    g *= effG;
+    b *= effB;
+
+    // ── Saturation (via HSL) ──
+    const satScale = skinVal > 0.01 ? getAdjustmentScale(skinVal, 'saturation') : 1.0;
+    const effSat = 1.0 + (saturation - 1.0) * satScale;
 
     const [h, s, l] = rgbToHsl(r, g, b);
-    const newS = Math.min(1, s * saturation);
+    const newS = Math.min(1, s * effSat);
     const rgb = hslToRgb(h, newS, l);
     r = rgb[0];
     g = rgb[1];
     b = rgb[2];
 
-    r += warmth;
-    b -= warmth;
+    // ── Warmth ──
+    if (Math.abs(warmth) > 0.001) {
+      const warmScale = skinVal > 0.01 ? getAdjustmentScale(skinVal, 'warmth') : 1.0;
+      const effWarmth = warmth * warmScale;
+      r += effWarmth;
+      b -= effWarmth;
+    }
+
+    // ── Green Shift ──
+    if (Math.abs(greenShift) > 0.001) {
+      const greenScale = skinVal > 0.01 ? getAdjustmentScale(skinVal, 'greenShift') : 1.0;
+      const effGreenShift = greenShift * greenScale;
+      
+      const maxC = Math.max(r, g, b);
+      const minC = Math.min(r, g, b);
+      const chroma = maxC - minC;
+
+      if (chroma > 0.01) {
+        const greenness = (g - Math.max(r, b)) / chroma;
+        const shift = Math.max(0, greenness) * effGreenShift;
+
+        r += shift * chroma * 0.5;
+        b -= shift * chroma * 0.3;
+
+        const lumAfter = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+        const mixAmt = shift * 0.15;
+        r = r * (1.0 - mixAmt) + lumAfter * mixAmt;
+        g = g * (1.0 - mixAmt) + lumAfter * mixAmt;
+        b = b * (1.0 - mixAmt) + lumAfter * mixAmt;
+      }
+    }
 
     data[i]     = linearToSrgbLUT[Math.round(Math.min(1, Math.max(0, r)) * 4095)];
     data[i + 1] = linearToSrgbLUT[Math.round(Math.min(1, Math.max(0, g)) * 4095)];

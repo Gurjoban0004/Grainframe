@@ -35,6 +35,10 @@ uniform sampler2D u_lutG;
 uniform sampler2D u_lutB;
 uniform sampler2D u_grain;
 
+// --- Skin Protection ---
+uniform sampler2D u_skinMask;
+uniform int u_hasSkinMask;
+
 // Tonal Decomposition
 uniform float u_exposure;
 uniform float u_highlights;
@@ -66,6 +70,25 @@ uniform float u_grainIntensity;  // preset.grainIntensity
 uniform float u_grainSize;       // preset.grainSize
 uniform vec2  u_grainOffset;
 uniform vec2  u_resolution;
+
+// ===== HELPER FUNCTIONS =====
+
+float getSkinScale(float skinVal, float att) {
+  if (skinVal < 0.01) return 1.0;
+  return 1.0 - skinVal * (1.0 - att);
+}
+
+float getSelectiveZoneAtt(int i) {
+    if (i == 0) return 0.25; // red
+    if (i == 1) return 0.12; // orange
+    if (i == 2) return 0.40; // yellow
+    if (i == 3) return 1.00; // green
+    if (i == 4) return 1.00; // cyan
+    if (i == 5) return 1.00; // blue
+    if (i == 6) return 1.00; // purple
+    if (i == 7) return 0.85; // magenta
+    return 1.0;
+}
 
 vec3 srgbToLinear(vec3 c) {
   vec3 lo = c / 12.92;
@@ -145,17 +168,25 @@ vec3 hslToRgb(vec3 hsl) {
   );
 }
 
+// ===== MAIN COLOR PIPELINE =====
+
 void main() {
   vec4 texel = texture(u_image, v_uv);
   vec3 rgb = texel.rgb;
+  
+  float skinVal = 0.0;
+  if (u_hasSkinMask > 0) {
+    skinVal = texture(u_skinMask, v_uv).r;
+  }
 
   // === STAGE 1 (applyColor): linear light color transform ===
   vec3 lin = srgbToLinear(rgb);
 
   // === Tonal Decomposition ===
   // 1. Exposure
-  if (abs(u_exposure) > 0.01) {
-    float gain = pow(2.0, u_exposure);
+  float eff_exposure = u_exposure * getSkinScale(skinVal, 0.85);
+  if (abs(eff_exposure) > 0.01) {
+    float gain = pow(2.0, eff_exposure);
     lin = lin * gain;
     // Soft highlight rolloff - compress overexposed values toward 1.0
     // For values <= 1.0, leave as-is. For values > 1.0, apply shoulder.
@@ -166,64 +197,76 @@ void main() {
   }
   
   // 2. Black point
-  if (u_blackPoint > 0.005) {
-    lin = u_blackPoint + lin * (1.0 - u_blackPoint);
+  float eff_bp = u_blackPoint * getSkinScale(skinVal, 0.75);
+  if (eff_bp > 0.005) {
+    lin = eff_bp + lin * (1.0 - eff_bp);
   }
   
   // 3. White point
-  if (u_whitePoint < 0.995) {
-    lin = lin * u_whitePoint;
+  float eff_wp = 1.0 - (1.0 - u_whitePoint) * getSkinScale(skinVal, 0.90);
+  if (eff_wp < 0.995) {
+    lin = lin * eff_wp;
   }
   
   // 4. Highlights
-  if (abs(u_highlights) > 0.01) {
+  float eff_highlights = u_highlights * getSkinScale(skinVal, 0.90);
+  if (abs(eff_highlights) > 0.01) {
     vec3 hw = smoothstep(0.3, 0.7, lin);
-    if (u_highlights < 0.0) {
-      lin = lin - hw * abs(u_highlights) * (lin - 0.5) * 0.8;
+    if (eff_highlights < 0.0) {
+      lin = lin - hw * abs(eff_highlights) * (lin - 0.5) * 0.8;
     } else {
-      lin = lin + hw * u_highlights * (1.0 - lin) * 0.6;
+      lin = lin + hw * eff_highlights * (1.0 - lin) * 0.6;
     }
   }
   
   // 5. Shadows
-  if (abs(u_shadows) > 0.01) {
+  float eff_shadows = u_shadows * getSkinScale(skinVal, 0.70);
+  if (abs(eff_shadows) > 0.01) {
     vec3 sw = 1.0 - smoothstep(0.3, 0.7, lin);
-    if (u_shadows > 0.0) {
-      lin = lin + sw * u_shadows * (0.5 - lin) * 0.8;
+    if (eff_shadows > 0.0) {
+      lin = lin + sw * eff_shadows * (0.5 - lin) * 0.8;
     } else {
-      lin = lin + sw * u_shadows * lin * 0.6;
+      lin = lin + sw * eff_shadows * lin * 0.6;
     }
   }
   
   // 6. Brightness
-  if (abs(u_brightness) > 0.01) {
+  float eff_brightness = u_brightness * getSkinScale(skinVal, 0.80);
+  if (abs(eff_brightness) > 0.01) {
     vec3 midW = exp(-pow((lin - 0.5) / 0.3, vec3(2.0)));
-    lin = lin + u_brightness * midW * 0.3;
+    lin = lin + eff_brightness * midW * 0.3;
   }
   
   // 7. Contrast
-  if (abs(u_contrast) > 0.01) {
+  float eff_contrast = u_contrast * getSkinScale(skinVal, 0.55);
+  if (abs(eff_contrast) > 0.01) {
     vec3 centered = lin - 0.5;
-    if (u_contrast > 0.0) {
-      float k = 1.0 + u_contrast * 3.0;
+    if (eff_contrast > 0.0) {
+      float k = 1.0 + eff_contrast * 3.0;
       lin = 0.5 + centered * k / (1.0 + abs(centered) * (k - 1.0) * 2.0);
     } else {
-      lin = 0.5 + centered * (1.0 + u_contrast * 0.8);
+      lin = 0.5 + centered * (1.0 + eff_contrast * 0.8);
     }
   }
   
   lin = clamp(lin, 0.0, 1.0);
 
   // Channel multipliers (same order as color.js)
-  lin *= vec3(u_rMult, u_gMult, u_bMult);
+  float colScale = getSkinScale(skinVal, 0.65); // uses saturation atten
+  float eff_rMult = 1.0 + (u_rMult - 1.0) * colScale;
+  float eff_gMult = 1.0 + (u_gMult - 1.0) * colScale;
+  float eff_bMult = 1.0 + (u_bMult - 1.0) * colScale;
+  lin *= vec3(eff_rMult, eff_gMult, eff_bMult);
 
   // Saturation via HSL (matches color.js exactly)
+  float eff_sat = 1.0 + (u_saturation - 1.0) * colScale;
   vec3 hsl = rgbToHsl(lin);
-  hsl.y = clamp(hsl.y * u_saturation, 0.0, 1.0);
+  hsl.y = clamp(hsl.y * eff_sat, 0.0, 1.0);
   lin = hslToRgb(hsl);
 
   // === Vibrance ===
-  if (abs(u_vibrance) > 0.001) {
+  float eff_vibrance = u_vibrance * getSkinScale(skinVal, 0.25);
+  if (abs(eff_vibrance) > 0.001) {
     float lum = dot(lin, vec3(0.2126, 0.7152, 0.0722));
     float maxC = max(lin.r, max(lin.g, lin.b));
     float minC = min(lin.r, min(lin.g, lin.b));
@@ -233,11 +276,10 @@ void main() {
     float weight = 1.0 - sat;
     weight = weight * weight;
     
+    // Internal skin detection block (we leave it as it provides native vibrance protection)
     if (chroma > 0.01) {
       float h;
       if (maxC == lin.r) {
-        // mod in GLSL is (x - y * floor(x/y)), which behaves well for positive. 
-        // to handle negative like JS % 6 correctly we can add 6 then mod 6
         float temp = (lin.g - lin.b) / chroma;
         h = mod(mod(temp, 6.0) + 6.0, 6.0);
       } else if (maxC == lin.g) {
@@ -257,7 +299,7 @@ void main() {
       }
     }
     
-    float amount = u_vibrance * weight;
+    float amount = eff_vibrance * weight;
     float scale = 1.0 + amount;
     
     lin = lum + (lin - lum) * scale;
@@ -283,9 +325,10 @@ void main() {
             if (w > 0.001) {
                 totalWeight += w;
                 vec3 adj = u_selectiveColor[i];
-                totalHueShift += adj.x * w;
-                totalSatMult += adj.y * w;
-                totalLumShift += adj.z * w;
+                float sScale = getSkinScale(skinVal, getSelectiveZoneAtt(i));
+                totalHueShift += adj.x * w * sScale;
+                totalSatMult += adj.y * w * sScale;
+                totalLumShift += adj.z * w * sScale;
             }
         }
         
@@ -305,22 +348,21 @@ void main() {
 
 
   // Warmth (matches color.js: r += warmth, b -= warmth, in linear)
-  lin.r += u_warmth;
-  lin.b -= u_warmth;
+  float eff_warmth = u_warmth * getSkinScale(skinVal, 0.40);
+  lin.r += eff_warmth;
+  lin.b -= eff_warmth;
   lin = clamp(lin, 0.0, 1.0);
 
   // === Green-to-olive hue shift ===
-  // Selectively shifts green-dominant pixels toward yellow/olive.
-  // Only affects pixels where green is the dominant channel.
-  // Skin tones (red-dominant) are not affected.
-  if (u_greenShift > 0.001) {
+  float eff_greenShift = u_greenShift * getSkinScale(skinVal, 0.08);
+  if (eff_greenShift > 0.001) {
     float maxC = max(max(lin.r, lin.g), lin.b);
     float minC = min(min(lin.r, lin.g), lin.b);
     float chroma = maxC - minC;
 
     if (chroma > 0.01) {
       float greenness = (lin.g - max(lin.r, lin.b)) / chroma;
-      float shift = max(0.0, greenness) * u_greenShift;
+      float shift = max(0.0, greenness) * eff_greenShift;
 
       lin.r += shift * chroma * 0.5;
       lin.b -= shift * chroma * 0.3;
@@ -349,9 +391,6 @@ void main() {
     // Corner distance for cap calculation
     float cx = w * 0.5;
     float cy = h * 0.5;
-    float cornerDist = length(vec2(cx, cy));
-    float rawCorner  = clamp((cornerDist - innerR) / range, 0.0, 1.0);
-    float effectiveIntensity = u_vignetteIntensity;
 
     // Pixel distance from center (in actual pixels, not UV)
     vec2 pixelPos = v_uv * vec2(w, h);
@@ -360,7 +399,7 @@ void main() {
     float dist = length(vec2(dx, dy));
 
     float falloff = clamp((dist - innerR) / range, 0.0, 1.0);
-    float mul = 1.0 - effectiveIntensity * falloff;
+    float mul = 1.0 - u_vignetteIntensity * falloff;
 
     // Apply in linear light (matches vignette.js)
     vec3 linV = srgbToLinear(srgb);
@@ -377,9 +416,10 @@ void main() {
   srgb = vec3(lutR, lutG, lutB);
 
   // === STAGE 4 (applyGrain): film grain in sRGB ===
-  if (u_grainIntensity > 0.001) {
+  float eff_grainIntensity = u_grainIntensity * getSkinScale(skinVal, 0.45);
+  if (eff_grainIntensity > 0.001) {
     float luminance = dot(srgb, vec3(0.299, 0.587, 0.114));
-    float grainFactor = u_grainIntensity * (1.0 - luminance * 0.6);
+    float grainFactor = eff_grainIntensity * (1.0 - luminance * 0.6);
 
     vec2 grainUV = v_uv * u_resolution / (u_grainSize * 64.0) + u_grainOffset;
     float noise = texture(u_grain, grainUV).r - 0.5;
@@ -434,7 +474,7 @@ void main() {
 `;
 
 // ==================================================
-// PASS 4: Sharpen (unsharp mask)
+// PASS 4: Sharpen (unsharp mask) AND Clarity (large radius detail)
 // output = original + (original - blurred) * amount
 // ==================================================
 export const sharpenFragmentShader = `#version 300 es
@@ -445,14 +485,44 @@ out vec4 fragColor;
 
 uniform sampler2D u_original;
 uniform sampler2D u_blurred;
+uniform sampler2D u_skinMask;
+uniform int u_hasSkinMask;
 uniform float u_amount;
+
+float getSkinScale(float skinVal, float att) {
+  if (skinVal < 0.01) return 1.0;
+  return 1.0 - skinVal * (1.0 - att);
+}
 
 void main() {
   vec3 orig = texture(u_original, v_uv).rgb;
   vec3 blur = texture(u_blurred, v_uv).rgb;
 
+  float skinVal = 0.0;
+  if (u_hasSkinMask > 0) {
+    skinVal = texture(u_skinMask, v_uv).r;
+  }
+
+  // Determine attenuation based on amount sign
+  // Edge cases: amount = 0.0 implies no change, so it's fine
+  float atten = 0.20; // default for sharpen
+  if (u_amount >= 0.0) {
+      atten = 0.00; // Zero positive detail on skin
+  } else {
+      atten = 0.65; // Softening allowed
+  }
+
+  float eff_amount = u_amount * getSkinScale(skinVal, atten);
+
+  // Bonus: If it's a positive clarity global pass, soften skin instead of ignoring it
+  // u_amount is capped to 0.3 for sharpen, but clarity routinely hits 1.0...
+  // Let's soften only if it's strongly positive
+  if (u_amount > 0.05 && skinVal > 0.5) {
+      eff_amount = -0.08 * skinVal;
+  }
+
   vec3 edge = orig - blur;
-  vec3 result = orig + edge * u_amount;
+  vec3 result = orig + edge * eff_amount;
 
   fragColor = vec4(clamp(result, 0.0, 1.0), 1.0);
 }
