@@ -434,7 +434,9 @@ export class WebGLRenderer {
     gl.useProgram(program);
     gl.bindFramebuffer(gl.FRAMEBUFFER, targetFB ? targetFB.fbo : null);
 
-    if (!targetFB) {
+    if (targetFB) {
+      gl.viewport(0, 0, targetFB.width, targetFB.height);
+    } else {
       gl.viewport(0, 0, this.canvas.width, this.canvas.height);
     }
 

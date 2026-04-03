@@ -519,8 +519,8 @@
       swatch.width = 24; swatch.height = 24; swatch.className = 'preset-swatch';
       const grayData = new ImageData(24, 24);
       for (let i = 0; i < grayData.data.length; i += 4) { grayData.data[i] = grayData.data[i+1] = grayData.data[i+2] = 128; grayData.data[i+3] = 255; }
-      try { swatch.getContext('2d').putImageData(processImage(grayData, preset), 0, 0); }
-      catch { swatch.getContext('2d').fillStyle = '#888'; swatch.getContext('2d').fillRect(0,0,24,24); }
+      try { swatch.getContext('2d').putImageData(processImage(grayData, preset, { mode: 'preview', skinMask: null }), 0, 0); }
+      catch (e) { swatch.getContext('2d').fillStyle = '#888'; swatch.getContext('2d').fillRect(0,0,24,24); }
       const card = document.createElement('div');
       card.className = 'preset-card'; card.dataset.id = preset.id || preset.name;
       const nameEl = document.createElement('span'); nameEl.className = 'preset-card-name'; nameEl.textContent = preset.name || preset.id;
@@ -733,7 +733,7 @@
   function runProcess() {
     if (!sourceImageData) return;
     const preset = readPreset();
-    try { processedImageData = processImage(sourceImageData, preset); }
+    try { processedImageData = processImage(sourceImageData, preset, { mode: 'preview', skinMask: currentSkinMask }); }
     catch (e) {
       console.error('Pipeline error:', e);
       processedImageData = new ImageData(new Uint8ClampedArray(sourceImageData.data), sourceImageData.width, sourceImageData.height);
@@ -748,6 +748,18 @@
 
   function renderSource() {
     if (!processedImageData) return;
+    if (showSkinMask && currentSkinMask) {
+      const maskImg = new ImageData(sourceImageData.width, sourceImageData.height);
+      for (let i = 0; i < currentSkinMask.length; i++) {
+        const v = Math.round(currentSkinMask[i] * 255);
+        maskImg.data[i * 4] = v;
+        maskImg.data[i * 4 + 1] = v;
+        maskImg.data[i * 4 + 2] = v;
+        maskImg.data[i * 4 + 3] = 255;
+      }
+      sourceCtx.putImageData(maskImg, 0, 0);
+      return;
+    }
     if (showBefore) { sourceCtx.putImageData(sourceImageData, 0, 0); return; }
     if (blendValue > 0.01 && refImageData) {
       drawBlended(sourceCtx, processedImageData, getScaledRef(processedImageData.width, processedImageData.height), blendValue);
@@ -805,9 +817,12 @@
   function updateTestPanel() {
     if (!testImageData) return;
     const preset = readPreset();
-    let result;
-    try { result = processImage(testImageData, preset); }
-    catch { result = new ImageData(new Uint8ClampedArray(testImageData.data), testImageData.width, testImageData.height); }
+    let result = testImageData;
+    try { result = processImage(testImageData, preset, { mode: 'preview', skinMask: null }); }
+    catch (e) {
+      console.error('Test panel process err', e);
+      result = new ImageData(new Uint8ClampedArray(testImageData.data), testImageData.width, testImageData.height);
+    }
     const canvas = document.getElementById('testCanvas');
     canvas.width = result.width; canvas.height = result.height;
     canvas.style.maxWidth = '100%'; canvas.style.maxHeight = '300px';
@@ -1112,7 +1127,7 @@
     try {
       const faces = await detectFacesFromImageData(imgData);
       currentSkinMask = buildSkinMask(imgData, faces);
-      fs.textContent = `Detector: \${faces.length} face(s)`;
+      fs.textContent = `Detector: ${faces.length} face(s)`;
       document.getElementById('btnSkinMap').style.display = 'inline-block';
     } catch (e) {
       console.warn('Face detect error', e);
@@ -1125,7 +1140,7 @@
   document.getElementById('btnSkinMap').addEventListener('click', (e) => {
     showSkinMask = !showSkinMask;
     e.target.style.background = showSkinMask ? 'rgba(201,169,110,0.3)' : 'rgba(201,169,110,0.08)';
-    updateMainCanvas();
+    renderSource();
   });
 
   // ─── Init ─────────────────────────────────────────────────────────────────────
@@ -1135,7 +1150,7 @@
 
     // Start loading face detector in background
     initFaceDetection().then(type => {
-      document.getElementById('faceStatus').textContent = `Detector: \${type} ready`;
+      document.getElementById('faceStatus').textContent = `Detector: ${type} ready`;
     });
 
     const curveCanvas = document.getElementById('curveCanvas');

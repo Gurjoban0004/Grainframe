@@ -35,7 +35,7 @@ async function _initDetector() {
   if (typeof window !== 'undefined' && 'FaceDetector' in window) {
     try {
       detectorInstance = new window.FaceDetector({
-        fastMode: true,
+        fastMode: false,
         maxDetectedFaces: 15
       });
       // Verify it works with a tiny test
@@ -132,8 +132,8 @@ export async function detectFaces(imageSource) {
         width: f.boundingBox.width,
         height: f.boundingBox.height,
       }))
-      // Filter out tiny detections (likely false positives)
-      .filter(f => f.width > 15 && f.height > 15);
+      // Filter out only single-pixel noise
+      .filter(f => f.width > 3 && f.height > 3);
 
     console.log(`[FaceDetect] Found ${faces.length} face(s)`);
     return faces;

@@ -12,12 +12,12 @@
 // Covers all human skin tones across all ethnicities.
 // Derived from empirical studies of skin reflectance spectra.
 
-const SKIN_HUE_CENTER = 28;      // degrees on HSL wheel
-const SKIN_HUE_RANGE  = 19;      // ±19° → covers ~9° to ~47°
-const SKIN_SAT_MIN    = 0.10;
-const SKIN_SAT_MAX    = 0.58;
-const SKIN_SAT_CENTER = 0.32;
-const SKIN_LUM_MIN    = 0.12;
+const SKIN_HUE_CENTER = 26;      // degrees on HSL wheel
+const SKIN_HUE_RANGE  = 16;      // ±16° → tighter restriction on reds and yellows
+const SKIN_SAT_MIN    = 0.15;    // Higher to reject grayish wood
+const SKIN_SAT_MAX    = 0.65;
+const SKIN_SAT_CENTER = 0.35;
+const SKIN_LUM_MIN    = 0.18;    // Higher to reject deep shadows/black jackets
 const SKIN_LUM_MAX    = 0.88;
 const SKIN_LUM_CENTER = 0.50;
 
@@ -108,7 +108,7 @@ export function skinWeight(r, g, b) {
   const chroma = max - min;
 
   // Near-achromatic pixels are not skin (gray/white/black)
-  if (chroma < 0.03) return 0;
+  if (chroma < 0.05) return 0;
 
   // ── Compute HSL ──
   const l = (max + min) / 2;
